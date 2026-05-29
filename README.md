@@ -10,7 +10,7 @@ A modern, highly modular Django and Django Ninja backend designed with a **Repos
   - **Services:** Pure business logic. All validations, logic checks, external integrations, and calculations reside here.
   - **Routes (Controllers):** Handles HTTP parameters, schema validations, calling services, and returning structured JSON API responses.
 - **Shared Middleware & Utility Layer:**
-  - **JWT Handler:** Lightweight JSON Web Token provider for security and authorization.
+  - **JWT Handler:** (removed) JSON Web Token support has been disabled.
   - **Global Exception handling:** Catches domain, validation, and database exceptions, formatting them into standardized, beautiful API error schemas.
   - **JSON Response Builders:** Guarantees all responses follow a standard envelope.
 

@@ -1,7 +1,6 @@
 from typing import List, Optional, Dict, Any
 from ninja import Router
 from pydantic import BaseModel
-from common.security.jwt_handler import JWTAuthBearer
 from common.response.base_response import APIEnvelope
 from common.response.response_builder import ResponseBuilder
 from common.utils.helpers import parse_query_param_int
@@ -68,21 +67,21 @@ def get_deal(request, deal_id: int):
     return ResponseBuilder.success(DealSchema.from_attributes(deal))
 
 
-@router.post("", response={201: APIEnvelope[DealSchema]}, auth=JWTAuthBearer())
+@router.post("", response={201: APIEnvelope[DealSchema]})
 def create_deal(request, payload: DealCreateSchema):
     """
     Creates a new sales opportunity deal.
-    (Authenticated - Requires JWT Bearer Header)
+    (Open Endpoint)
     """
     deal = DealService.create_deal(payload.dict())
     return 201, ResponseBuilder.success(DealSchema.from_attributes(deal))
 
 
-@router.put("/{deal_id}", response={200: APIEnvelope[DealSchema]}, auth=JWTAuthBearer())
+@router.put("/{deal_id}", response={200: APIEnvelope[DealSchema]})
 def update_deal(request, deal_id: int, payload: DealUpdateSchema):
     """
     Updates specific attributes of an active deal.
-    (Authenticated - Requires JWT Bearer Header)
+    (Open Endpoint)
     """
     # Filter out empty fields that are not sent in request
     update_data = {k: v for k, v in payload.dict().items() if v is not None}
@@ -91,11 +90,11 @@ def update_deal(request, deal_id: int, payload: DealUpdateSchema):
     return ResponseBuilder.success(DealSchema.from_attributes(updated_deal))
 
 
-@router.delete("/{deal_id}", response={200: APIEnvelope[Dict[str, str]]}, auth=JWTAuthBearer())
+@router.delete("/{deal_id}", response={200: APIEnvelope[Dict[str, str]]})
 def delete_deal(request, deal_id: int):
     """
     Permanently deletes a deal record.
-    (Authenticated - Requires JWT Bearer Header)
+    (Open Endpoint)
     """
     DealService.delete_deal(deal_id)
     return ResponseBuilder.success({"message": f"Deal {deal_id} has been deleted successfully"})

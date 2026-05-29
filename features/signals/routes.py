@@ -1,7 +1,6 @@
 from typing import List, Optional, Dict, Any
 from ninja import Router
 from pydantic import BaseModel
-from common.security.jwt_handler import JWTAuthBearer
 from common.response.base_response import APIEnvelope
 from common.response.response_builder import ResponseBuilder
 from common.utils.helpers import parse_query_param_int
@@ -68,31 +67,28 @@ def get_signal(request, signal_id: int):
     return ResponseBuilder.success(SignalSchema.from_attributes(signal))
 
 
-@router.post("", response={201: APIEnvelope[SignalSchema]}, auth=JWTAuthBearer())
+@router.post("", response={201: APIEnvelope[SignalSchema]})
 def create_signal(request, payload: SignalCreateSchema):
     """
     Creates a new marketing or transactional signal.
-    (Authenticated - Requires JWT Bearer Header)
+    (Open Endpoint)
     """
-    # The authenticated JWT claims are stored in request.auth
-    auth_claims = request.auth
-    
-    # Capture the user ID from the token who made this request
-    created_by_user = auth_claims.get("sub") if auth_claims else "system"
-    
-    # Include metadata or audit trail elements into the payload dict
+    # No authentication: default creator is 'system'
+    created_by_user = "system"
+
     signal_data = payload.dict()
+    signal_data.setdefault("payload", {})
     signal_data["payload"]["created_by"] = created_by_user
-    
+
     signal = SignalService.create_signal(signal_data)
     return 201, ResponseBuilder.success(SignalSchema.from_attributes(signal))
 
 
-@router.put("/{signal_id}", response={200: APIEnvelope[SignalSchema]}, auth=JWTAuthBearer())
+@router.put("/{signal_id}", response={200: APIEnvelope[SignalSchema]})
 def update_signal(request, signal_id: int, payload: SignalUpdateSchema):
     """
     Updates specific attributes of a signal.
-    (Authenticated - Requires JWT Bearer Header)
+    (Open Endpoint)
     """
     # Filter out empty fields that are not sent in request
     update_data = {k: v for k, v in payload.dict().items() if v is not None}
@@ -101,11 +97,11 @@ def update_signal(request, signal_id: int, payload: SignalUpdateSchema):
     return ResponseBuilder.success(SignalSchema.from_attributes(updated_signal))
 
 
-@router.delete("/{signal_id}", response={200: APIEnvelope[Dict[str, str]]}, auth=JWTAuthBearer())
+@router.delete("/{signal_id}", response={200: APIEnvelope[Dict[str, str]]})
 def delete_signal(request, signal_id: int):
     """
     Permanently deletes a signal by ID.
-    (Authenticated - Requires JWT Bearer Header)
+    (Open Endpoint)
     """
     SignalService.delete_signal(signal_id)
     return ResponseBuilder.success({"message": f"Signal {signal_id} has been deleted successfully"})

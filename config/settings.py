@@ -122,7 +122,4 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOW_ALL_ORIGINS = True  # Set to False in production and specify CORS_ALLOWED_ORIGINS
 CORS_ALLOW_CREDENTIALS = True
 
-# JWT Settings
-JWT_SECRET = os.getenv('JWT_SECRET', 'django-insecure-jwt-secret-key-change-in-production')
-JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
-JWT_EXPIRATION_HOURS = int(os.getenv('JWT_EXPIRATION_HOURS', '24'))
+# JWT Settings removed: authentication via JWT disabled
