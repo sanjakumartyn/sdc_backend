@@ -17,10 +17,12 @@ register_exception_handlers(api)
 # Import modular API routers
 from features.signals.routes import router as signals_router
 from features.deals.routes import router as deals_router
+from features.auth.routes import router as auth_router
 
 # Register API routes with clear prefixing and tags for Swagger grouping
 api.add_router("/signals", signals_router, tags=["Signals"])
 api.add_router("/deals", deals_router, tags=["Deals"])
+api.add_router("/auth", auth_router, tags=["Auth"])
 
 urlpatterns = [
     path('admin/', admin.site.urls),

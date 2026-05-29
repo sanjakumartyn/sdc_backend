@@ -30,8 +30,9 @@ INSTALLED_APPS = [
     'corsheaders',
     
     # Modular domain applications
-    'modules.signals',
-    'modules.deals',
+    'features.signals',
+    'features.deals',
+    'features.auth',
 ]
 
 MIDDLEWARE = [
@@ -45,7 +46,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'core.urls'
+ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
     {
@@ -63,8 +64,8 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'core.wsgi.application'
-ASGI_APPLICATION = 'core.asgi.application'
+WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
 
 # Database configuration with dynamic engine resolver
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///db.sqlite3')
