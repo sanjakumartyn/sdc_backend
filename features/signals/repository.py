@@ -10,7 +10,7 @@ class SignalRepository:
     """
     
     @staticmethod
-    def get_by_id(signal_id: int) -> Signal:
+    def get_by_id(signal_id: str) -> Signal:
         """Retrieves a single Signal by ID, raising a NotFoundException if missing."""
         try:
             return Signal.objects.get(pk=signal_id)

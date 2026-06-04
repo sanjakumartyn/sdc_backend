@@ -58,7 +58,7 @@ def list_signals(
 
 
 @router.get("/{signal_id}", response={200: APIEnvelope[SignalSchema]})
-def get_signal(request, signal_id: int):
+def get_signal(request, signal_id: str):
     """
     Retrieves a single signal by its primary key ID.
     (Open Endpoint)
@@ -85,7 +85,7 @@ def create_signal(request, payload: SignalCreateSchema):
 
 
 @router.put("/{signal_id}", response={200: APIEnvelope[SignalSchema]})
-def update_signal(request, signal_id: int, payload: SignalUpdateSchema):
+def update_signal(request, signal_id: str, payload: SignalUpdateSchema):
     """
     Updates specific attributes of a signal.
     (Open Endpoint)
@@ -98,7 +98,7 @@ def update_signal(request, signal_id: int, payload: SignalUpdateSchema):
 
 
 @router.delete("/{signal_id}", response={200: APIEnvelope[Dict[str, str]]})
-def delete_signal(request, signal_id: int):
+def delete_signal(request, signal_id: str):
     """
     Permanently deletes a signal by ID.
     (Open Endpoint)

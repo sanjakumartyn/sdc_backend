@@ -58,3 +58,14 @@ class ForbiddenException(APIException):
             error_code="FORBIDDEN",
             details=details
         )
+
+
+class ServiceUnavailableException(APIException):
+    """Exception raised when an upstream service cannot be reached."""
+    def __init__(self, message: str = "Service temporarily unavailable", details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            status_code=503,
+            error_code="SERVICE_UNAVAILABLE",
+            details=details
+        )

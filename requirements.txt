@@ -3,3 +3,7 @@ django-ninja>=1.1.0
 pydantic>=2.0.0
 python-dotenv>=1.0.0
 django-cors-headers>=4.3.0
+django-mongodb-backend>=5.2.1
+pymongo>=4.7.0
+dnspython>=2.6.1
+requests>=2.32.0

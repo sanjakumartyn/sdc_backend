@@ -12,7 +12,7 @@ class DealService:
     """
     
     @staticmethod
-    def get_deal(deal_id: int) -> Deal:
+    def get_deal(deal_id: str) -> Deal:
         """Retrieves a specific deal or propagates the Not Found error."""
         return DealRepository.get_by_id(deal_id)
 
@@ -51,7 +51,7 @@ class DealService:
         return DealRepository.create(data)
 
     @staticmethod
-    def update_deal(deal_id: int, update_data: Dict[str, Any]) -> Deal:
+    def update_deal(deal_id: str, update_data: Dict[str, Any]) -> Deal:
         """
         Applies business checks (like valid stage updates and probability transitions) 
         before modifying properties.
@@ -83,7 +83,7 @@ class DealService:
         return DealRepository.update(deal, update_data)
 
     @staticmethod
-    def delete_deal(deal_id: int) -> None:
+    def delete_deal(deal_id: str) -> None:
         """Deletes a deal by locating it first."""
         deal = DealRepository.get_by_id(deal_id)
         DealRepository.delete(deal)

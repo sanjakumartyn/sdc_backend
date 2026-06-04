@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 class DealBaseSchema(BaseModel):
     name: str = Field(..., max_length=255, description="Deal title or client name")
@@ -27,9 +27,16 @@ class DealUpdateSchema(BaseModel):
 
 class DealSchema(DealBaseSchema):
     """Output serializable representation of a Deal."""
-    id: int
+    id: str
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def stringify_id(cls, value):
+        if value is None:
+            return value
+        return str(value)
 
     class Config:
         from_attributes = True  # Pydantic v2 configuration to load from Django DB ORM objects

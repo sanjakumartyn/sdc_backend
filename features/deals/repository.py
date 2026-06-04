@@ -10,7 +10,7 @@ class DealRepository:
     """
     
     @staticmethod
-    def get_by_id(deal_id: int) -> Deal:
+    def get_by_id(deal_id: str) -> Deal:
         """Retrieves a single Deal by ID, raising a NotFoundException if missing."""
         try:
             return Deal.objects.get(pk=deal_id)

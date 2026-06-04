@@ -1,4 +1,4 @@
-from .base_exception import APIException, NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException
+from .base_exception import APIException, NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException, ServiceUnavailableException
 
 __all__ = [
     'APIException',
@@ -6,4 +6,5 @@ __all__ = [
     'BadRequestException',
     'UnauthorizedException',
     'ForbiddenException',
+    'ServiceUnavailableException',
 ]

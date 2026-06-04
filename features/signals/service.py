@@ -12,7 +12,7 @@ class SignalService:
     """
     
     @staticmethod
-    def get_signal(signal_id: int) -> Signal:
+    def get_signal(signal_id: str) -> Signal:
         """Retrieves a specific signal or propagates the Not Found error."""
         return SignalRepository.get_by_id(signal_id)
 
@@ -42,7 +42,7 @@ class SignalService:
         return SignalRepository.create(data)
 
     @staticmethod
-    def update_signal(signal_id: int, update_data: Dict[str, Any]) -> Signal:
+    def update_signal(signal_id: str, update_data: Dict[str, Any]) -> Signal:
         """
         Applies business checks (like valid status updates) 
         before modifying properties.
@@ -68,7 +68,7 @@ class SignalService:
         return SignalRepository.update(signal, update_data)
 
     @staticmethod
-    def delete_signal(signal_id: int) -> None:
+    def delete_signal(signal_id: str) -> None:
         """Deletes a signal by locating it first."""
         signal = SignalRepository.get_by_id(signal_id)
         SignalRepository.delete(signal)

@@ -58,7 +58,7 @@ def list_deals(
 
 
 @router.get("/{deal_id}", response={200: APIEnvelope[DealSchema]})
-def get_deal(request, deal_id: int):
+def get_deal(request, deal_id: str):
     """
     Retrieves a single sales deal by its primary key ID.
     (Open Endpoint)
@@ -78,7 +78,7 @@ def create_deal(request, payload: DealCreateSchema):
 
 
 @router.put("/{deal_id}", response={200: APIEnvelope[DealSchema]})
-def update_deal(request, deal_id: int, payload: DealUpdateSchema):
+def update_deal(request, deal_id: str, payload: DealUpdateSchema):
     """
     Updates specific attributes of an active deal.
     (Open Endpoint)
@@ -91,7 +91,7 @@ def update_deal(request, deal_id: int, payload: DealUpdateSchema):
 
 
 @router.delete("/{deal_id}", response={200: APIEnvelope[Dict[str, str]]})
-def delete_deal(request, deal_id: int):
+def delete_deal(request, deal_id: str):
     """
     Permanently deletes a deal record.
     (Open Endpoint)
