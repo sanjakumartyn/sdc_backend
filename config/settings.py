@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     # Modular domain applications
     'features.signals',
     'features.deals',
+    'features.companydata',
 ]
 
 MIDDLEWARE = [
