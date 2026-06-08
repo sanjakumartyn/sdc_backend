@@ -1,4 +1,5 @@
 from django.urls import path
+from django.views.generic import TemplateView
 from ninja import NinjaAPI
 from common.exception.global_exception import register_exception_handlers
 
@@ -27,5 +28,6 @@ api.add_router("/companydata", companydata_router, tags=["Company Data"])
 
 
 urlpatterns = [
+    path('', TemplateView.as_view(template_name='index.html')),
     path('api/', api.urls),
 ]

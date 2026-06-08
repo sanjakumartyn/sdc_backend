@@ -8,7 +8,24 @@ class CompanyDataService:
     @staticmethod
     def _get_db():
         """Retrieve the pymongo database instance from Django connection."""
-        return connections['default'].connection
+        try:
+            # For django_mongodb_backend, access the database through the connection
+            connection = connections['default']
+            # The database attribute triggers the connection if not already connected
+            db = connection.database
+            if db is None:
+                raise BadRequestException(
+                    "Database connection returned None. Check DATABASE_URL in .env has correct format and credentials."
+                )
+            return db
+        except BadRequestException:
+            raise
+        except Exception as e:
+            import logging
+            logging.error(f"Database connection error: {str(e)}", exc_info=True)
+            raise BadRequestException(
+                f"Failed to connect to MongoDB: {str(e)}. Verify DATABASE_URL, username, and password in .env"
+            )
 
     @staticmethod
     def get_documents(collection_name: str, limit: int = 10, offset: int = 0) -> Tuple[List[Dict[str, Any]], int]:
