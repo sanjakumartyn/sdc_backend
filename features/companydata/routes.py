@@ -5,6 +5,7 @@ from common.response.base_response import APIEnvelope
 from common.response.response_builder import ResponseBuilder
 from features.companydata.schema import QuerySchema, UpdateDocumentSchema
 from features.companydata.service import CompanyDataService
+from features.callAgents.service import CallAgentsService
 
 router = Router()
 
@@ -16,6 +17,20 @@ def get_all_data(request, limit_per_collection: int = 50):
     """
     all_data = CompanyDataService.get_all_data(limit_per_collection=limit_per_collection)
     return ResponseBuilder.success(all_data)
+
+@router.get("/company/details", response={200: APIEnvelope[Dict[str, Any]]})
+def get_company_details(request, company: str = Query(None)):
+    """Retrieve company details, enriching static data with a dynamic strategic fit score.
+    If a company name is provided, perform analysis; otherwise return static document.
+    """
+    # Fetch static company document (if any)
+    documents, _ = CompanyDataService.get_documents("companydetails", limit=1)
+    company_doc = documents[0] if documents else {}
+    if company:
+        synthesis = CallAgentsService.analyze_company({"company": company})
+        company_doc["strategicFit"] = synthesis.get("strategic_fit_score", 0)
+    return ResponseBuilder.success(company_doc)
+
 
 @router.get("/{collection_name}", response={200: APIEnvelope[Dict[str, Any]]})
 def get_documents(request, collection_name: str, query: Query[QuerySchema]):

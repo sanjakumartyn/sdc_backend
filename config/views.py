@@ -39,7 +39,19 @@ def dashboard_summary(request):
     }
     return JsonResponse(data)
 
+@csrf_exempt
 def history(request):
+    if request.method == "DELETE":
+        try:
+            from features.companydata.service import CompanyDataService
+            db = CompanyDataService._get_db()
+            db.search_history.delete_many({})
+            return JsonResponse({"status": "success", "message": "Search history cleared"})
+        except Exception as e:
+            import logging
+            logging.error(f"Error clearing history: {e}")
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
     try:
         from features.companydata.service import CompanyDataService
         import datetime
