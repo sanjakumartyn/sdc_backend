@@ -1,0 +1,23 @@
+from ninja import Router
+from features.dashboard.service import DashboardService
+from features.callAgents.service import CallAgentsService
+from features.callAgents.routes import _parse_question_request
+from common.response.response_builder import ResponseBuilder
+
+router = Router()
+
+@router.get("/dashboard-summary")
+def get_dashboard_summary(request):
+    """
+    Retrieves a temporary dashboard summary.
+    """
+    return DashboardService.get_summary()
+
+@router.post("/analyze-company")
+def analyze_company(request):
+    """
+    Analyzes a company by orchestrating scraping, OCR, RAG, and LLM synthesis.
+    """
+    payload, uploaded_files = _parse_question_request(request)
+    result = CallAgentsService.analyze_company(payload, uploaded_files=uploaded_files)
+    return ResponseBuilder.success(result)

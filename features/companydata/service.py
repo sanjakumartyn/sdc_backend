@@ -7,24 +7,25 @@ from common.exception.base_exception import BadRequestException, NotFoundExcepti
 class CompanyDataService:
     @staticmethod
     def _get_db():
-        """Retrieve the pymongo database instance from Django connection."""
+        """Retrieve the pymongo database instance directly from MONGODB_URI."""
         try:
-            # For django_mongodb_backend, access the database through the connection
-            connection = connections['default']
-            # The database attribute triggers the connection if not already connected
-            db = connection.database
-            if db is None:
-                raise BadRequestException(
-                    "Database connection returned None. Check DATABASE_URL in .env has correct format and credentials."
-                )
-            return db
-        except BadRequestException:
-            raise
+            import os
+            import pymongo
+            
+            uri = os.getenv("MONGODB_URI")
+            db_name = os.getenv("MONGO_DB_NAME", "testdb")
+            
+            if not uri:
+                raise BadRequestException("MONGODB_URI not found in .env")
+                
+            client = pymongo.MongoClient(uri, serverSelectionTimeoutMS=5000)
+            return client[db_name]
+            
         except Exception as e:
             import logging
             logging.error(f"Database connection error: {str(e)}", exc_info=True)
             raise BadRequestException(
-                f"Failed to connect to MongoDB: {str(e)}. Verify DATABASE_URL, username, and password in .env"
+                f"Failed to connect to MongoDB: {str(e)}. Verify MONGODB_URI, username, password, and IP Whitelist in Atlas."
             )
 
     @staticmethod
