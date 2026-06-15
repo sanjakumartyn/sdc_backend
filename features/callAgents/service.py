@@ -190,7 +190,7 @@ class CallAgentsService:
         if not question:
             return {}
 
-        base_url = os.getenv("RAG_PRODUCTS_BASE_URL", "http://127.0.0.1:8001")
+        base_url = os.getenv("RAG_PRODUCTS_BASE_URL", "http://127.0.0.1:8000")
         find_path = os.getenv("RAG_PRODUCTS_FIND_PATH", "/api/products/find")
         timeout = float(os.getenv("RAG_PRODUCTS_TIMEOUT", "30"))
         
@@ -222,7 +222,7 @@ class CallAgentsService:
             return {}
 
         base_url = os.getenv("RAG_CASESTUDIES_BASE_URL", "http://127.0.0.1:8001")
-        find_path = os.getenv("RAG_CASESTUDIES_FIND_PATH", "/api/case-studies/find")
+        find_path = os.getenv("RAG_CASESTUDIES_FIND_PATH", "/api/chat")
         timeout = float(os.getenv("RAG_CASESTUDIES_TIMEOUT", "30"))
         
         request_payload = {
