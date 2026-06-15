@@ -69,3 +69,18 @@ class ServiceUnavailableException(APIException):
             error_code="SERVICE_UNAVAILABLE",
             details=details
         )
+
+
+class GroqApiKeyMissingException(APIException):
+    """Exception raised when Groq is required but not configured."""
+    def __init__(
+        self,
+        message: str = "Groq API key is required to generate the final answer",
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            message=message,
+            status_code=503,
+            error_code="GROQ_API_KEY_MISSING",
+            details=details,
+        )

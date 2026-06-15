@@ -74,6 +74,8 @@ OCR_MICROSERVICE_TIMEOUT=60
 
 COMPANY_DATA_ENABLED=true
 COMPANY_DATA_LIMIT_PER_COLLECTION=10
+COMPANY_ANALYSIS_DATA_LIMIT_PER_COLLECTION=10
+COMPANY_ANALYSIS_DEAL_LIMIT=10
 
 GROQ_API_KEY=
 GROQ_MODEL=llama-3.1-8b-instant
@@ -135,6 +137,7 @@ Current router prefixes:
 - `features.signals.routes` is mounted at `/api/signals`.
 - `features.deals.routes` is mounted at `/api/deals`.
 - `features.companydata.routes` is mounted at `/api/companydata`.
+- `features.companyAnalysis.routes` is mounted at `/api/company-analysis`.
 
 ## 7. Standard Response Format
 
@@ -184,6 +187,7 @@ Custom exception types:
 - `ForbiddenException` maps to HTTP `403`.
 - `NotFoundException` maps to HTTP `404`.
 - `ServiceUnavailableException` maps to HTTP `503`.
+- `GroqApiKeyMissingException` maps to HTTP `503` with code `GROQ_API_KEY_MISSING`.
 
 ## 9. Signals Feature Flow
 
@@ -379,81 +383,126 @@ Processing steps:
 8. Send the generated product question to the product RAG microservice with configured project and filter values.
 9. Send the generated product question to the case-study RAG microservice with the `companycasestudies` project and `MY_Company_Case_Studies` filter tag.
 10. Treat the OCR microservice as required when a file is uploaded.
-11. Treat the company-data lookup as optional; if it fails, return `company_data_unavailable`.
+11. Treat the company-data lookup as optional; if it fails, include `company_data_unavailable` in the internal Groq context.
 12. Treat the agent microservice as required.
-13. Treat product RAG and case-study RAG as optional; if either service fails, include the upstream error and continue.
+13. Treat product RAG and case-study RAG as optional; if either service fails, include the upstream error in the internal Groq context and continue.
 14. Build a synthesis prompt from the agent, product RAG, case-study RAG, OCR extraction, company-data responses, generated keywords, and product question.
-15. If `GROQ_API_KEY` is configured, call Groq chat completions for the final answer.
-16. Return upstream responses, company data, OCR extraction data, generated keywords, and synthesized answer metadata.
+15. Call Groq chat completions for the final answer. `GROQ_API_KEY` is required for this endpoint to succeed.
+16. Return only the final answer. Upstream responses, company data, OCR extraction data, generated keywords, and RAG source chunks are used internally but are not exposed in the normal response.
 
 Response data shape:
 
 ```json
 {
-  "company": "Asian Paints",
-  "company_name": "Asian Paints",
-  "account_id": "asian_paints_001",
-  "website_url": "https://www.asianpaints.com",
-  "documents": ["document-id-or-url"],
-  "keywords": ["fleet management", "incident tracking"],
-  "product_question": "Which products help with AI-enabled equipment monitoring?",
-  "keyword_generation_provider": "groq",
-  "keyword_generation_model": "llama-3.1-8b-instant",
-  "keyword_generation_error": null,
-  "product_question_generation_error": null,
-  "upstream": {
-    "agent": {},
-    "rag": {
-      "products": {},
-      "case_studies": {
-        "found": true,
-        "products": [],
-        "caseStudies": [
-          {
-            "caseStudyId": "CS008",
-            "title": "Carbon Neutrality Compliance Program",
-            "client": "Infosys",
-            "industry": "Technology",
-            "challenge": "Need for centralized ESG and carbon reporting.",
-            "solution": "Implemented CarbonTrack ESG and ESG Vision Monitor.",
-            "productsUsed": ["CarbonTrack ESG", "ESG Vision Monitor"],
-            "results": "Improved ESG audit transparency by 64%.",
-            "roiImpact": "Accelerated sustainability compliance initiatives.",
-            "location": "Bengaluru, India",
-            "completionYear": 2024
-          }
-        ],
-        "Complaints": [],
-        "source_chunks": []
-      }
-    },
-    "ocr": [],
-    "company_data": {}
-  },
-  "company_data": {},
-  "ocr_extractions": [],
-  "synthesized_answer": "Final answer",
-  "synthesis_provider": "groq",
-  "synthesis_model": "llama-3.1-8b-instant",
-  "synthesis_error": null
+  "answer": "Final Groq-generated answer for the user's question."
 }
 ```
 
-If `GROQ_API_KEY` is missing, the endpoint still uses fallback keywords for RAG, returns upstream data, and sets:
+If `GROQ_API_KEY` is missing, the endpoint returns an error instead of raw upstream data:
 
 ```json
 {
-  "keywords": ["Example Company"],
-  "product_question": "Which products are relevant for Example Company?",
-  "keyword_generation_provider": "groq",
-  "keyword_generation_error": "groq_api_key_missing",
-  "product_question_generation_error": "groq_api_key_missing",
-  "synthesis_provider": "groq",
-  "synthesis_error": "groq_api_key_missing"
+  "success": false,
+  "data": null,
+  "error": {
+    "message": "Groq API key is required to generate the final answer",
+    "code": "GROQ_API_KEY_MISSING",
+    "details": {}
+  },
+  "timestamp": "2026-06-05T00:00:00+00:00"
 }
 ```
 
 ## 12. Shared Utility Steps
+
+## 12. Company Analysis Dashboard Flow
+
+Files:
+
+- Schemas: `features/companyAnalysis/schema.py`
+- Service: `features/companyAnalysis/service.py`
+- Routes: `features/companyAnalysis/routes.py`
+
+Endpoints:
+
+```text
+POST /api/company-analysis
+POST /api/company-analysis/deal-coach
+```
+
+Dashboard request:
+
+```json
+{
+  "account_id": "asian_paints_001",
+  "company_name": "Asian Paints",
+  "website_url": "https://www.asianpaints.com",
+  "documents": [],
+  "question": "Create full company analysis dashboard"
+}
+```
+
+Dashboard response data shape:
+
+```json
+{
+  "company_name": "Asian Paints",
+  "strategic_fit": {
+    "score": 94,
+    "alignment_level": "High Alignment Probability",
+    "explanation": "Evidence-based explanation"
+  },
+  "meeting_prep": {
+    "key_discussion_topics": [],
+    "business_priorities": [],
+    "executive_talking_points": [],
+    "potential_objections": [],
+    "recommended_agenda": [],
+    "qbr_summary": "Evidence-based QBR summary"
+  },
+  "intelligence_overview": {
+    "company_overview": "Evidence-based overview",
+    "industry_position": "Evidence-based position",
+    "business_model": "Evidence-based model",
+    "strategic_goals": [],
+    "expansion_initiatives": [],
+    "digital_transformation_efforts": [],
+    "sustainability_commitments": []
+  },
+  "ai_needs_prediction": [],
+  "solution_mapping": []
+}
+```
+
+Deal coach request:
+
+```json
+{
+  "company_name": "Asian Paints",
+  "account_id": "asian_paints_001",
+  "message": "Which products should I pitch?"
+}
+```
+
+Deal coach response data shape:
+
+```json
+{
+  "answer": "Context-aware sales coaching answer"
+}
+```
+
+Processing steps:
+
+1. Validate that `company_name` or backward-compatible `company` is present.
+2. Gather agent/web intelligence, company data, CRM deals, OCR extraction, product RAG, and case-study RAG.
+3. Compact all evidence before sending it to Groq so raw `source_chunks` and debug payloads are not sent.
+4. Ask Groq for strict JSON matching the dashboard schema.
+5. Validate the Groq JSON with Pydantic before returning it.
+6. Return structured dashboard data only; raw upstream payloads are not exposed.
+7. For deal coach, use the same compact context plus the user message and return only `answer`.
+
+## 13. Shared Utility Steps
 
 `common/utils/helpers.py` contains reusable helpers:
 
@@ -462,7 +511,7 @@ If `GROQ_API_KEY` is missing, the endpoint still uses fallback keywords for RAG,
 
 These helpers are used by route and service layers to keep validation behavior consistent.
 
-## 13. Run Tests
+## 14. Run Tests
 
 Run all Django tests:
 
@@ -480,7 +529,7 @@ Feature tests currently cover:
 - Deal invalid stage validation.
 - Deal stage-to-probability transitions.
 
-## 14. Add A New Feature
+## 15. Add A New Feature
 
 Use the existing Repository-Service-Route pattern.
 
@@ -498,7 +547,7 @@ Steps:
 10. Add focused tests for service rules and important endpoint behavior.
 11. Run migrations and tests.
 
-## 15. Notes And Current Gaps
+## 16. Notes And Current Gaps
 
 - `features.callAgents` is imported in `config/urls.py`, but it is not listed in `INSTALLED_APPS`. This is acceptable because it has no Django models, but add it if app configuration or signals are introduced later.
 - The current `README.md` contains stale folder names like `core`, `shared`, and `modules`; the actual folders are `config`, `common`, and `features`.

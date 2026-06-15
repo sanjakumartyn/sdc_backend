@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 import requests
 from django.test import TestCase
 
-from common.exception.base_exception import BadRequestException
+from common.exception.base_exception import BadRequestException, GroqApiKeyMissingException, ServiceUnavailableException
 from features.callAgents.service import CallAgentsService
 
 
@@ -99,15 +99,11 @@ class CallAgentsServiceTestCase(TestCase):
         })
         self.assertEqual(calls[3]["url"], "https://api.groq.com/openai/v1/chat/completions")
 
-        self.assertEqual(result["company"], "Asian Paints")
-        self.assertEqual(result["company_name"], "Asian Paints")
-        self.assertEqual(result["account_id"], "asian_paints_001")
-        self.assertEqual(result["website_url"], "https://www.asianpaints.com")
-        self.assertEqual(result["keywords"], ["equipment monitoring"])
-        self.assertEqual(result["product_question"], "Which products help with AI-enabled equipment monitoring?")
-        self.assertEqual(result["upstream"]["rag"]["products"], {"products": ["product-rag-response"]})
-        self.assertEqual(result["upstream"]["rag"]["case_studies"], {"skipped": "case_study_rag_not_configured"})
-        self.assertEqual(result["synthesized_answer"], "final synthesized answer")
+        self.assertEqual(result, {"answer": "final synthesized answer"})
+        self.assertNotIn("upstream", result)
+        self.assertNotIn("products", result)
+        self.assertNotIn("caseStudies", result)
+        self.assertNotIn("synthesized_answer", result)
 
     @patch.dict(
         "os.environ",
@@ -122,7 +118,7 @@ class CallAgentsServiceTestCase(TestCase):
         clear=False,
     )
     @patch("features.callAgents.service.requests.post")
-    def test_question_falls_back_from_company_and_user_question_without_groq(self, mock_post):
+    def test_question_requires_groq_api_key_for_final_answer(self, mock_post):
         def side_effect(url, json=None, headers=None, timeout=None, files=None):
             if url == "http://127.0.0.1:8000/":
                 return FakeResponse({"status": "success"})
@@ -135,18 +131,17 @@ class CallAgentsServiceTestCase(TestCase):
 
         mock_post.side_effect = side_effect
 
-        result = CallAgentsService.question({
-            "company": "Acme",
-            "question": "Find monitoring products",
-        })
+        with self.assertRaises(GroqApiKeyMissingException) as context:
+            CallAgentsService.question({
+                "company": "Acme",
+                "question": "Find monitoring products",
+            })
 
-        self.assertEqual(result["company"], "Acme")
-        self.assertEqual(result["company_name"], "Acme")
-        self.assertEqual(result["keywords"], ["Acme"])
-        self.assertEqual(result["product_question"], "Find monitoring products")
-        self.assertEqual(result["keyword_generation_error"], "groq_api_key_missing")
-        self.assertEqual(result["product_question_generation_error"], "groq_api_key_missing")
-        self.assertEqual(result["synthesis_error"], "groq_api_key_missing")
+        self.assertEqual(context.exception.error_code, "GROQ_API_KEY_MISSING")
+        self.assertEqual(
+            context.exception.message,
+            "Groq API key is required to generate the final answer",
+        )
 
     @patch.dict(
         "os.environ",
@@ -185,18 +180,18 @@ class CallAgentsServiceTestCase(TestCase):
 
         mock_post.side_effect = side_effect
 
-        result = CallAgentsService.question({"company": "Acme"})
+        with self.assertRaises(ServiceUnavailableException) as context:
+            CallAgentsService.question({"company": "Acme"})
 
-        self.assertEqual(result["keywords"], ["Acme"])
-        self.assertEqual(result["product_question"], "Which products are relevant for Acme?")
-        self.assertTrue(result["keyword_generation_error"].startswith("groq_request_failed:"))
-        self.assertTrue(result["product_question_generation_error"].startswith("groq_request_failed:"))
-        self.assertTrue(result["synthesis_error"].startswith("groq_request_failed:"))
+        self.assertEqual(context.exception.error_code, "SERVICE_UNAVAILABLE")
+        self.assertEqual(context.exception.message, "Unable to generate the final Groq answer")
+        self.assertTrue(context.exception.details["error"].startswith("groq_request_failed:"))
 
     @patch.dict(
         "os.environ",
         {
-            "GROQ_API_KEY": "",
+            "GROQ_API_KEY": "test-groq-key",
+            "GROQ_API_URL": "https://api.groq.com/openai/v1/chat/completions",
             "AGENT_MICROSERVICE_BASE_URL": "http://127.0.0.1:8000",
             "AGENT_MICROSERVICE_QUESTION_PATH": "/",
             "PRODUCT_RAG_MICROSERVICE_BASE_URL": "http://127.0.0.1:8001",
@@ -214,19 +209,22 @@ class CallAgentsServiceTestCase(TestCase):
             if url == "http://127.0.0.1:8001/api/products/find":
                 raise requests.RequestException("product rag down")
 
+            if url == "https://api.groq.com/openai/v1/chat/completions":
+                return FakeResponse({"choices": [{"message": {"content": "answer despite product rag outage"}}]})
+
             raise AssertionError(f"Unexpected URL: {url}")
 
         mock_post.side_effect = side_effect
 
         result = CallAgentsService.question({"company": "Acme"})
 
-        self.assertEqual(result["upstream"]["rag"]["products"]["error"], "product_rag_service_unavailable")
-        self.assertEqual(result["upstream"]["rag"]["case_studies"], {"skipped": "case_study_rag_not_configured"})
+        self.assertEqual(result, {"answer": "answer despite product rag outage"})
 
     @patch.dict(
         "os.environ",
         {
-            "GROQ_API_KEY": "",
+            "GROQ_API_KEY": "test-groq-key",
+            "GROQ_API_URL": "https://api.groq.com/openai/v1/chat/completions",
             "AGENT_MICROSERVICE_BASE_URL": "http://127.0.0.1:8000",
             "AGENT_MICROSERVICE_QUESTION_PATH": "/",
             "PRODUCT_RAG_MICROSERVICE_BASE_URL": "http://127.0.0.1:8001",
@@ -261,6 +259,9 @@ class CallAgentsServiceTestCase(TestCase):
                     "source_chunks": [],
                 })
 
+            if url == "https://api.groq.com/openai/v1/chat/completions":
+                return FakeResponse({"choices": [{"message": {"content": "case study answer"}}]})
+
             raise AssertionError(f"Unexpected URL: {url}")
 
         mock_post.side_effect = side_effect
@@ -270,13 +271,68 @@ class CallAgentsServiceTestCase(TestCase):
             "question": "Find ESG case studies",
         })
 
-        self.assertEqual(result["upstream"]["rag"]["case_studies"], {
-            "found": True,
-            "products": [],
-            "caseStudies": [{"caseStudyId": "CS008"}],
-            "Complaints": [],
-            "source_chunks": [],
-        })
+        self.assertEqual(result, {"answer": "case study answer"})
+
+    @patch.dict(
+        "os.environ",
+        {
+            "GROQ_API_KEY": "test-groq-key",
+            "GROQ_API_URL": "https://api.groq.com/openai/v1/chat/completions",
+            "AGENT_MICROSERVICE_BASE_URL": "http://127.0.0.1:8000",
+            "AGENT_MICROSERVICE_QUESTION_PATH": "/",
+            "PRODUCT_RAG_MICROSERVICE_BASE_URL": "http://127.0.0.1:8001",
+            "PRODUCT_RAG_MICROSERVICE_QUESTION_PATH": "/api/products/find",
+            "CASE_STUDY_RAG_ENABLED": "false",
+        },
+        clear=False,
+    )
+    @patch("features.callAgents.service.requests.post")
+    def test_synthesis_prompt_compacts_large_upstream_payloads(self, mock_post):
+        calls = []
+        huge_text = "x" * 5000
+
+        def side_effect(url, json=None, headers=None, timeout=None, files=None):
+            calls.append({"url": url, "json": json})
+
+            if url == "http://127.0.0.1:8000/":
+                return FakeResponse({
+                    "status": "success",
+                    "signals": [{"title": huge_text, "summary": huge_text}],
+                    "sources": [{"source_type": "news", "status": "ok", "content": huge_text}],
+                })
+
+            if url == "https://api.groq.com/openai/v1/chat/completions":
+                groq_call_number = len([call for call in calls if call["url"] == url])
+                if groq_call_number == 1:
+                    return FakeResponse({
+                        "choices": [{
+                            "message": {
+                                "content": '{"keywords": ["paint"], "product_question": "Find paint products"}'
+                            }
+                        }]
+                    })
+
+                prompt = json["messages"][1]["content"]
+                self.assertLess(len(prompt), 12000)
+                self.assertNotIn(huge_text, prompt)
+                self.assertNotIn('"source_chunks"', prompt)
+                self.assertIn('"source_snippets"', prompt)
+                return FakeResponse({"choices": [{"message": {"content": "compact answer"}}]})
+
+            if url == "http://127.0.0.1:8001/api/products/find":
+                return FakeResponse({
+                    "found": True,
+                    "products": [{"productName": "VOCapture Elite", "description": huge_text}],
+                    "source_chunks": [{"text": huge_text, "project_id": "companyproduct"}],
+                })
+
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        mock_post.side_effect = side_effect
+
+        result = CallAgentsService.question({"company": "Asian Paints"})
+
+        self.assertEqual(result, {"answer": "compact answer"})
 
     @patch.dict("os.environ", {"OCR_MICROSERVICE_BASE_URL": "http://127.0.0.1:8003"}, clear=False)
     @patch("features.callAgents.service.requests.post")

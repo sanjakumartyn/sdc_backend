@@ -5,11 +5,21 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import requests
 
-from common.exception.base_exception import BadRequestException, ServiceUnavailableException
+from common.exception.base_exception import (
+    BadRequestException,
+    GroqApiKeyMissingException,
+    ServiceUnavailableException,
+)
 from features.companydata.service import CompanyDataService
 
 
 class CallAgentsService:
+    MAX_AGENT_SIGNALS = 5
+    MAX_AGENT_SOURCES = 4
+    MAX_RAG_ITEMS = 5
+    MAX_SOURCE_CHUNKS = 4
+    MAX_TEXT_CHARS = 800
+
     @staticmethod
     def question(payload: Dict[str, Any], uploaded_files: Optional[Sequence[Any]] = None) -> Dict[str, Any]:
         company_name = (payload.get("company_name") or payload.get("company") or "").strip()
@@ -58,6 +68,7 @@ class CallAgentsService:
 
         synthesis = CallAgentsService._synthesize_answer(
             company_name,
+            user_question,
             agent_upstream,
             product_rag_upstream,
             case_study_rag_upstream,
@@ -67,35 +78,7 @@ class CallAgentsService:
             company_data,
         )
 
-        return {
-            "company": company_name,
-            "company_name": company_name,
-            "account_id": account_id,
-            "website_url": website_url,
-            "documents": documents,
-            "question": user_question,
-            "keywords": keywords,
-            "product_question": product_question,
-            "keyword_generation_provider": keyword_generation.get("provider"),
-            "keyword_generation_model": keyword_generation.get("model"),
-            "keyword_generation_error": keyword_generation.get("error"),
-            "product_question_generation_error": keyword_generation.get("product_question_error"),
-            "upstream": {
-                "agent": agent_upstream,
-                "rag": {
-                    "products": product_rag_upstream,
-                    "case_studies": case_study_rag_upstream,
-                },
-                "ocr": ocr_extractions,
-                "company_data": company_data,
-            },
-            "company_data": company_data,
-            "ocr_extractions": ocr_extractions,
-            "synthesized_answer": synthesis.get("answer"),
-            "synthesis_provider": synthesis.get("provider"),
-            "synthesis_model": synthesis.get("model"),
-            "synthesis_error": synthesis.get("error"),
-        }
+        return {"answer": synthesis["answer"]}
 
     @staticmethod
     def _build_url(base_url: str, path: str) -> str:
@@ -179,7 +162,12 @@ class CallAgentsService:
 
     @staticmethod
     def _fetch_case_study_rag_response(product_question: str) -> Dict[str, Any]:
-        if os.getenv("CASE_STUDY_RAG_ENABLED", "true").lower() != "true":
+        case_study_enabled = os.getenv("CASE_STUDY_RAG_ENABLED", "true").lower()
+        if case_study_enabled != "true":
+            print(
+                "case_study_rag skipped: CASE_STUDY_RAG_ENABLED="
+                f"{case_study_enabled}"
+            )
             return {"skipped": "case_study_rag_not_configured"}
 
         base_url = (
@@ -191,6 +179,10 @@ class CallAgentsService:
             or os.getenv("PRODUCT_RAG_MICROSERVICE_QUESTION_PATH", "/api/products/find")
         )
         if not base_url or not path:
+            print(
+                "case_study_rag skipped: missing CASE_STUDY_RAG_MICROSERVICE_BASE_URL "
+                "or CASE_STUDY_RAG_MICROSERVICE_QUESTION_PATH, and no product RAG fallback is configured"
+            )
             return {"skipped": "case_study_rag_not_configured"}
 
         request_payload = {
@@ -201,6 +193,13 @@ class CallAgentsService:
                 "tag": os.getenv("CASE_STUDY_RAG_FILTER_TAG", "MY_Company_Case_Studies"),
             },
         }
+        print(
+            "case_study_rag request:",
+            {
+                "url": CallAgentsService._build_url(base_url, path),
+                "payload": request_payload,
+            },
+        )
 
         return CallAgentsService._post_json(
             base_url=base_url,
@@ -411,6 +410,7 @@ class CallAgentsService:
     @staticmethod
     def _synthesize_answer(
         company: str,
+        user_question: str,
         agent_upstream: Dict[str, Any],
         product_rag_upstream: Dict[str, Any],
         case_study_rag_upstream: Dict[str, Any],
@@ -422,15 +422,11 @@ class CallAgentsService:
         groq_model = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip()
 
         if not os.getenv("GROQ_API_KEY", "").strip():
-            return {
-                "provider": "groq",
-                "model": groq_model,
-                "answer": None,
-                "error": "groq_api_key_missing",
-            }
+            raise GroqApiKeyMissingException()
 
         prompt = CallAgentsService._build_synthesis_prompt(
             company,
+            user_question,
             agent_upstream,
             product_rag_upstream,
             case_study_rag_upstream,
@@ -444,10 +440,11 @@ class CallAgentsService:
                 {
                     "role": "system",
                     "content": (
-                        "You are a sales intelligence assistant. Use the provided agent, product RAG, "
-                        "case-study RAG, OCR, and company data results to produce a direct, helpful "
-                        "answer for the user. If the inputs conflict, prefer the most specific and "
-                        "recent evidence."
+                        "You are a sales intelligence assistant. Answer the user's question directly "
+                        "using only the provided agent, product RAG, case-study RAG, OCR, and company "
+                        "data evidence. Recommend products and case studies only when the data supports "
+                        "them. Do not dump raw JSON or source chunks. Keep the response concise, "
+                        "business-focused, and practical. If evidence is incomplete, say what is missing."
                     ),
                 },
                 {"role": "user", "content": prompt},
@@ -456,23 +453,26 @@ class CallAgentsService:
         )
 
         if result.get("error"):
-            return {
-                "provider": result.get("provider"),
-                "model": result.get("model"),
-                "answer": None,
-                "error": result.get("error"),
-            }
+            raise ServiceUnavailableException(
+                message="Unable to generate the final Groq answer",
+                details={"provider": result.get("provider"), "model": result.get("model"), "error": result.get("error")},
+            )
 
         answer = result.get("content")
         if answer:
             answer = answer.strip()
 
-        return {
-            "provider": result.get("provider"),
-            "model": result.get("model"),
-            "answer": answer or None,
-            "error": None if answer else "groq_response_missing_content",
-        }
+        if not answer:
+            raise ServiceUnavailableException(
+                message="Unable to generate the final Groq answer",
+                details={
+                    "provider": result.get("provider"),
+                    "model": result.get("model"),
+                    "error": "groq_response_missing_content",
+                },
+            )
+
+        return {"provider": result.get("provider"), "model": result.get("model"), "answer": answer}
 
     @staticmethod
     def _call_groq_chat(messages: List[Dict[str, str]], temperature: float) -> Dict[str, Optional[str]]:
@@ -537,6 +537,7 @@ class CallAgentsService:
     @staticmethod
     def _build_synthesis_prompt(
         company: str,
+        user_question: str,
         agent_upstream: Dict[str, Any],
         product_rag_upstream: Dict[str, Any],
         case_study_rag_upstream: Dict[str, Any],
@@ -545,27 +546,147 @@ class CallAgentsService:
         ocr_extractions: List[Dict[str, Any]],
         company_data: Dict[str, Any],
     ) -> str:
-        combined_payload = {
-            "company": company,
-            "keywords": keywords,
-            "product_question": product_question,
-            "agent": agent_upstream,
-            "product_rag": product_rag_upstream,
-            "case_study_rag": case_study_rag_upstream,
-            "ocr_extractions": ocr_extractions,
-            "company_data": company_data,
-        }
+        evidence_payload = CallAgentsService._build_compact_synthesis_context(
+            company=company,
+            user_question=user_question,
+            keywords=keywords,
+            product_question=product_question,
+            agent_upstream=agent_upstream,
+            product_rag_upstream=product_rag_upstream,
+            case_study_rag_upstream=case_study_rag_upstream,
+            ocr_extractions=ocr_extractions,
+            company_data=company_data,
+        )
 
         return (
-            "Generate the best final answer for the company query using the data below. "
-            "Use the OCR extraction results as document evidence when they are available. "
-            "Use company_data as the internal company database context. "
-            "Use product_rag for product evidence and case_study_rag for case-study evidence. "
-            "Use keywords as the search terms that produced the RAG context. "
-            "Keep the answer concise, accurate, and practical. If the data is incomplete, "
-            "explain what is missing instead of inventing details.\n\n"
-            f"{json.dumps(combined_payload, ensure_ascii=True, indent=2, default=str)}"
+            "Generate the final answer for the user's company question using the compact evidence below. "
+            "Answer the user_question directly. Recommend products or case studies only when supported "
+            "by the evidence. Do not expose raw JSON, source chunks, IDs, or debug payloads. Keep the "
+            "answer concise, accurate, business-focused, and practical. If the evidence is incomplete, "
+            "state what is missing instead of inventing details.\n\n"
+            f"{json.dumps(evidence_payload, ensure_ascii=True, indent=2, default=str)}"
         )
+
+    @staticmethod
+    def _build_compact_synthesis_context(
+        *,
+        company: str,
+        user_question: str,
+        keywords: List[str],
+        product_question: str,
+        agent_upstream: Dict[str, Any],
+        product_rag_upstream: Dict[str, Any],
+        case_study_rag_upstream: Dict[str, Any],
+        ocr_extractions: List[Dict[str, Any]],
+        company_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        combined_payload = {
+            "company": company,
+            "user_question": user_question,
+            "keywords": keywords,
+            "product_question": product_question,
+            "agent": CallAgentsService._summarize_agent(agent_upstream),
+            "product_rag": CallAgentsService._summarize_rag_payload(product_rag_upstream),
+            "case_study_rag": CallAgentsService._summarize_rag_payload(case_study_rag_upstream),
+            "ocr_extractions": CallAgentsService._summarize_ocr_extractions(ocr_extractions),
+            "company_data": CallAgentsService._truncate_value(company_data),
+        }
+
+        return combined_payload
+
+    @staticmethod
+    def _summarize_agent(agent_upstream: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(agent_upstream, dict):
+            return {"raw": CallAgentsService._truncate_value(agent_upstream)}
+
+        return {
+            "status": agent_upstream.get("status"),
+            "signal_count": agent_upstream.get("signal_count"),
+            "signals": [
+                CallAgentsService._truncate_value(signal)
+                for signal in (agent_upstream.get("signals") or [])[:CallAgentsService.MAX_AGENT_SIGNALS]
+            ],
+            "sources": [
+                {
+                    "source_type": source.get("source_type"),
+                    "status": source.get("status"),
+                    "content": CallAgentsService._truncate_text(source.get("content")),
+                }
+                for source in (agent_upstream.get("sources") or [])[:CallAgentsService.MAX_AGENT_SOURCES]
+                if isinstance(source, dict)
+            ],
+        }
+
+    @staticmethod
+    def _summarize_rag_payload(rag_payload: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(rag_payload, dict):
+            return {"raw": CallAgentsService._truncate_value(rag_payload)}
+
+        summary = {
+            "found": rag_payload.get("found"),
+            "error": rag_payload.get("error"),
+            "products": [
+                CallAgentsService._truncate_value(product)
+                for product in (rag_payload.get("products") or [])[:CallAgentsService.MAX_RAG_ITEMS]
+            ],
+            "caseStudies": [
+                CallAgentsService._truncate_value(case_study)
+                for case_study in (rag_payload.get("caseStudies") or [])[:CallAgentsService.MAX_RAG_ITEMS]
+            ],
+            "Complaints": [
+                CallAgentsService._truncate_value(complaint)
+                for complaint in (rag_payload.get("Complaints") or [])[:CallAgentsService.MAX_RAG_ITEMS]
+            ],
+            "source_snippets": [],
+        }
+
+        for chunk in (rag_payload.get("source_chunks") or [])[:CallAgentsService.MAX_SOURCE_CHUNKS]:
+            if not isinstance(chunk, dict):
+                continue
+
+            summary["source_snippets"].append({
+                "project_id": chunk.get("project_id"),
+                "tag": chunk.get("tag"),
+                "score": chunk.get("score"),
+                "text": CallAgentsService._truncate_text(chunk.get("text")),
+            })
+
+        return summary
+
+    @staticmethod
+    def _summarize_ocr_extractions(ocr_extractions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        summarized = []
+        for extraction in ocr_extractions[:CallAgentsService.MAX_RAG_ITEMS]:
+            summarized.append({
+                "file": extraction.get("file"),
+                "content_type": extraction.get("content_type"),
+                "extracted": CallAgentsService._truncate_value(extraction.get("extracted")),
+            })
+        return summarized
+
+    @staticmethod
+    def _truncate_value(value: Any) -> Any:
+        if isinstance(value, str):
+            return CallAgentsService._truncate_text(value)
+
+        if isinstance(value, list):
+            return [CallAgentsService._truncate_value(item) for item in value[:CallAgentsService.MAX_RAG_ITEMS]]
+
+        if isinstance(value, dict):
+            return {
+                key: CallAgentsService._truncate_value(item)
+                for key, item in value.items()
+                if key not in {"source_chunks"}
+            }
+
+        return value
+
+    @staticmethod
+    def _truncate_text(value: Any) -> str:
+        text = str(value or "").strip()
+        if len(text) <= CallAgentsService.MAX_TEXT_CHARS:
+            return text
+        return f"{text[:CallAgentsService.MAX_TEXT_CHARS].rstrip()}..."
 
     @staticmethod
     def _extract_groq_content(payload: Dict[str, Any]) -> str:
