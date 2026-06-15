@@ -49,15 +49,26 @@ DEBUG=True
 ALLOWED_HOSTS=*
 DATABASE_URL=mongodb://localhost:27017/sdc_backend
 
-AGENT_MICROSERVICE_BASE_URL=http://localhost:8001
-AGENT_MICROSERVICE_QUESTION_PATH=/question
-AGENT_MICROSERVICE_TIMEOUT=30
+AGENT_MICROSERVICE_BASE_URL=http://127.0.0.1:8000
+AGENT_MICROSERVICE_QUESTION_PATH=/
+AGENT_MICROSERVICE_TIMEOUT=60
 
-RAG_MICROSERVICE_BASE_URL=http://localhost:8002
-RAG_MICROSERVICE_QUESTION_PATH=/question
-RAG_MICROSERVICE_TIMEOUT=30
+PRODUCT_RAG_MICROSERVICE_BASE_URL=http://127.0.0.1:8001
+PRODUCT_RAG_MICROSERVICE_QUESTION_PATH=/api/products/find
+PRODUCT_RAG_MICROSERVICE_TIMEOUT=30
+PRODUCT_RAG_PROJECT_ID=companyproduct
+PRODUCT_RAG_PROJECT_KEY=companyproduct
+PRODUCT_RAG_FILTER_TAG=MY_Company_Product
 
-OCR_MICROSERVICE_BASE_URL=http://127.0.0.1:8001
+CASE_STUDY_RAG_ENABLED=true
+CASE_STUDY_RAG_MICROSERVICE_BASE_URL=
+CASE_STUDY_RAG_MICROSERVICE_QUESTION_PATH=
+CASE_STUDY_RAG_MICROSERVICE_TIMEOUT=30
+CASE_STUDY_RAG_PROJECT_ID=companycasestudies
+CASE_STUDY_RAG_PROJECT_KEY=companycasestudies
+CASE_STUDY_RAG_FILTER_TAG=MY_Company_Case_Studies
+
+OCR_MICROSERVICE_BASE_URL=http://127.0.0.1:8003
 OCR_EXTRACT_DOCUMENTS_PATH=/extract/documents
 OCR_MICROSERVICE_TIMEOUT=60
 
@@ -68,6 +79,7 @@ GROQ_API_KEY=
 GROQ_MODEL=llama-3.1-8b-instant
 GROQ_API_URL=https://api.groq.com/openai/v1/chat/completions
 GROQ_TIMEOUT=30
+GROQ_KEYWORD_LIMIT=8
 ```
 
 Database behavior is resolved from `DATABASE_URL` in `config/settings.py`:
@@ -334,8 +346,12 @@ Request body:
 
 ```json
 {
-  "company": "Example Company",
-  "documents": ["document-id-or-url"]
+  "account_id": "asian_paints_001",
+  "company_name": "Asian Paints",
+  "website_url": "https://www.asianpaints.com",
+  "company": "Asian Paints",
+  "documents": ["document-id-or-url"],
+  "question": "optional product question"
 }
 ```
 
@@ -345,36 +361,72 @@ Multipart request with OCR document extraction:
 POST http://127.0.0.1:8000/api/question
 Content-Type: multipart/form-data
 
-company=Example Company
+account_id=asian_paints_001
+company_name=Asian Paints
+website_url=https://www.asianpaints.com
 file=@C:\Users\rmsan\Downloads\EV_Fleet_Incident_Management (1).pdf
 ```
 
 Processing steps:
 
-1. Validate that `company` is present and not blank.
+1. Validate that `company_name` or backward-compatible `company` is present and not blank.
 2. Accept `documents` from the request body.
 3. Convert document values to trimmed strings and remove blanks.
 4. If files are uploaded, send each file to the OCR microservice at `OCR_MICROSERVICE_BASE_URL + OCR_EXTRACT_DOCUMENTS_PATH`.
 5. Retrieve internal company data through `CompanyDataService.get_all_data()`.
-6. Send the company and documents to the agent microservice.
-7. Send the same company and documents to the RAG microservice.
-8. Treat the OCR microservice as required when a file is uploaded.
-9. Treat the company-data lookup as optional; if it fails, return `company_data_unavailable`.
-10. Treat the agent microservice as required.
-11. Treat the RAG microservice as optional.
-12. Build a synthesis prompt from the agent, RAG, OCR extraction, and company-data responses.
-13. If `GROQ_API_KEY` is configured, call Groq chat completions.
-14. Return upstream responses, company data, OCR extraction data, and synthesized answer metadata.
+6. Send `account_id`, `company_name`, and `website_url` to the agent microservice.
+7. Ask Groq to generate search keywords and a product RAG question from the company, documents, user question, agent response, OCR extraction, and company data.
+8. Send the generated product question to the product RAG microservice with configured project and filter values.
+9. Send the generated product question to the case-study RAG microservice with the `companycasestudies` project and `MY_Company_Case_Studies` filter tag.
+10. Treat the OCR microservice as required when a file is uploaded.
+11. Treat the company-data lookup as optional; if it fails, return `company_data_unavailable`.
+12. Treat the agent microservice as required.
+13. Treat product RAG and case-study RAG as optional; if either service fails, include the upstream error and continue.
+14. Build a synthesis prompt from the agent, product RAG, case-study RAG, OCR extraction, company-data responses, generated keywords, and product question.
+15. If `GROQ_API_KEY` is configured, call Groq chat completions for the final answer.
+16. Return upstream responses, company data, OCR extraction data, generated keywords, and synthesized answer metadata.
 
 Response data shape:
 
 ```json
 {
-  "company": "Example Company",
+  "company": "Asian Paints",
+  "company_name": "Asian Paints",
+  "account_id": "asian_paints_001",
+  "website_url": "https://www.asianpaints.com",
   "documents": ["document-id-or-url"],
+  "keywords": ["fleet management", "incident tracking"],
+  "product_question": "Which products help with AI-enabled equipment monitoring?",
+  "keyword_generation_provider": "groq",
+  "keyword_generation_model": "llama-3.1-8b-instant",
+  "keyword_generation_error": null,
+  "product_question_generation_error": null,
   "upstream": {
     "agent": {},
-    "rag": {},
+    "rag": {
+      "products": {},
+      "case_studies": {
+        "found": true,
+        "products": [],
+        "caseStudies": [
+          {
+            "caseStudyId": "CS008",
+            "title": "Carbon Neutrality Compliance Program",
+            "client": "Infosys",
+            "industry": "Technology",
+            "challenge": "Need for centralized ESG and carbon reporting.",
+            "solution": "Implemented CarbonTrack ESG and ESG Vision Monitor.",
+            "productsUsed": ["CarbonTrack ESG", "ESG Vision Monitor"],
+            "results": "Improved ESG audit transparency by 64%.",
+            "roiImpact": "Accelerated sustainability compliance initiatives.",
+            "location": "Bengaluru, India",
+            "completionYear": 2024
+          }
+        ],
+        "Complaints": [],
+        "source_chunks": []
+      }
+    },
     "ocr": [],
     "company_data": {}
   },
@@ -387,10 +439,15 @@ Response data shape:
 }
 ```
 
-If `GROQ_API_KEY` is missing, the endpoint still returns upstream data and sets:
+If `GROQ_API_KEY` is missing, the endpoint still uses fallback keywords for RAG, returns upstream data, and sets:
 
 ```json
 {
+  "keywords": ["Example Company"],
+  "product_question": "Which products are relevant for Example Company?",
+  "keyword_generation_provider": "groq",
+  "keyword_generation_error": "groq_api_key_missing",
+  "product_question_generation_error": "groq_api_key_missing",
   "synthesis_provider": "groq",
   "synthesis_error": "groq_api_key_missing"
 }

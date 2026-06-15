@@ -34,7 +34,11 @@ def _parse_question_request(request) -> Tuple[Dict[str, Any], List[Any]]:
         uploaded_files.extend(request.FILES.getlist("files"))
 
         return {
+            "account_id": request.POST.get("account_id", ""),
+            "company_name": request.POST.get("company_name", ""),
             "company": request.POST.get("company", ""),
+            "website_url": request.POST.get("website_url", ""),
+            "question": request.POST.get("question", ""),
             "documents": documents,
         }, uploaded_files
 
