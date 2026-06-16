@@ -57,10 +57,10 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
-def build_database_settings(database_url: str):
+def build_database_settings(database_url: str, database_name_override: str = ""):
     if database_url.startswith(('mongodb://', 'mongodb+srv://')):
         parsed_url = urlparse(database_url)
-        database_name = parsed_url.path.lstrip('/') or 'sdc_backend'
+        database_name = database_name_override or parsed_url.path.lstrip('/') or 'sdc_backend'
         return {
             'default': {
                 'ENGINE': 'django_mongodb_backend',
@@ -91,30 +91,25 @@ def build_database_settings(database_url: str):
     }
 
 
-def resolve_database_url() -> str:
+def resolve_database_config() -> tuple[str, str]:
     database_url = os.getenv('DATABASE_URL', '').strip()
     if database_url:
-        return database_url
+        return database_url, ''
 
     mongodb_uri = os.getenv('MONGODB_URI', '').strip()
     mongo_db_name = os.getenv('MONGO_DB_NAME', '').strip()
-    if mongodb_uri and mongo_db_name and mongodb_uri.startswith(('mongodb://', 'mongodb+srv://')):
-        parsed_url = urlparse(mongodb_uri)
-        if parsed_url.path and parsed_url.path != '/':
-            return mongodb_uri
-
-        query = f"?{parsed_url.query}" if parsed_url.query else ""
-        return f"{parsed_url.scheme}://{parsed_url.netloc}/{mongo_db_name}{query}"
+    if mongodb_uri and mongo_db_name:
+        return mongodb_uri, mongo_db_name
 
     if mongodb_uri:
-        return mongodb_uri
+        return mongodb_uri, ''
 
-    return 'mongodb://localhost:27017/sdc_backend'
+    return 'mongodb://localhost:27017/sdc_backend', ''
 
 
 # Database configuration with dynamic engine resolver
-DATABASE_URL = resolve_database_url()
-DATABASES = build_database_settings(DATABASE_URL)
+DATABASE_URL, DATABASE_NAME_OVERRIDE = resolve_database_config()
+DATABASES = build_database_settings(DATABASE_URL, DATABASE_NAME_OVERRIDE)
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'

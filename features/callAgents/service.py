@@ -149,6 +149,17 @@ class CallAgentsService:
                 "tag": os.getenv("PRODUCT_RAG_FILTER_TAG", "MY_Company_Product"),
             },
         }
+        if os.getenv("COMPANY_ANALYSIS_DEBUG", "false").strip().lower() in {"1", "true", "yes", "on"}:
+            print(
+                "product_rag request:",
+                {
+                    "url": CallAgentsService._build_url(
+                        os.getenv("PRODUCT_RAG_MICROSERVICE_BASE_URL", "http://127.0.0.1:8001"),
+                        os.getenv("PRODUCT_RAG_MICROSERVICE_QUESTION_PATH", "/api/products/find"),
+                    ),
+                    "payload": request_payload,
+                },
+            )
 
         return CallAgentsService._post_json(
             base_url=os.getenv("PRODUCT_RAG_MICROSERVICE_BASE_URL", "http://127.0.0.1:8001"),
@@ -599,9 +610,35 @@ class CallAgentsService:
         if not isinstance(agent_upstream, dict):
             return {"raw": CallAgentsService._truncate_value(agent_upstream)}
 
+        company_profile = agent_upstream.get("company_profile") or {}
+        products = []
+        if isinstance(company_profile, dict):
+            for key in ("products", "services"):
+                items = company_profile.get(key) or []
+                if isinstance(items, list):
+                    for item in items:
+                        if isinstance(item, dict):
+                            name = item.get("name")
+                            if name and isinstance(name, str):
+                                products.append(name.strip())
+                        elif isinstance(item, str):
+                            products.append(item.strip())
+                            
+            seen = set()
+            unique_products = []
+            for prod in products:
+                if not prod:
+                    continue
+                lower_prod = prod.lower()
+                if lower_prod not in seen:
+                    seen.add(lower_prod)
+                    unique_products.append(CallAgentsService._truncate_text(prod))
+            products = unique_products[:CallAgentsService.MAX_RAG_ITEMS * 2]
+
         return {
             "status": agent_upstream.get("status"),
             "signal_count": agent_upstream.get("signal_count"),
+            "client_products": products,
             "signals": [
                 CallAgentsService._truncate_value(signal)
                 for signal in (agent_upstream.get("signals") or [])[:CallAgentsService.MAX_AGENT_SIGNALS]

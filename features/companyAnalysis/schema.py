@@ -12,10 +12,17 @@ class CompanyAnalysisRequestSchema(BaseModel):
     documents: List[str] = Field(default_factory=list)
 
 
+class EvidenceItemSchema(BaseModel):
+    source: str
+    finding: str
+
+
 class StrategicFitSchema(BaseModel):
-    score: int = Field(..., ge=0, le=100)
+    score: Optional[int] = Field(default=None, ge=0, le=100)
     alignment_level: str
     explanation: str
+    confidence: int = Field(default=0, ge=0, le=100)
+    evidence: List[EvidenceItemSchema] = Field(default_factory=list)
 
 
 class MeetingPrepSchema(BaseModel):
@@ -41,6 +48,7 @@ class NeedsPredictionSchema(BaseModel):
     need: str
     confidence: int = Field(..., ge=0, le=100)
     reason: str
+    evidence: List[EvidenceItemSchema] = Field(default_factory=list)
 
 
 class SolutionMappingSchema(BaseModel):
@@ -49,6 +57,8 @@ class SolutionMappingSchema(BaseModel):
     match_percent: int = Field(..., ge=0, le=100)
     deal_value: Optional[str] = None
     reason: str
+    confidence: int = Field(default=0, ge=0, le=100)
+    evidence: List[EvidenceItemSchema] = Field(default_factory=list)
 
 
 class CompanyAnalysisResponseSchema(BaseModel):

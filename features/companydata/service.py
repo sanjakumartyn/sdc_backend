@@ -9,13 +9,16 @@ class CompanyDataService:
     def _get_db():
         """Retrieve the pymongo database instance from Django connection."""
         try:
-            # For django_mongodb_backend, access the database through the connection
             connection = connections['default']
-            # The database attribute triggers the connection if not already connected
-            db = connection.database
+            if getattr(connection, 'vendor', None) != 'mongodb':
+                raise BadRequestException(
+                    "Company data requires MongoDB. Check that the default database ENGINE is django_mongodb_backend."
+                )
+
+            db = connection.get_database() if hasattr(connection, 'get_database') else getattr(connection, 'database', None)
             if db is None:
                 raise BadRequestException(
-                    "Database connection returned None. Check DATABASE_URL in .env has correct format and credentials."
+                    "MongoDB connection is not available. Check that the default database ENGINE is django_mongodb_backend."
                 )
             return db
         except BadRequestException:
