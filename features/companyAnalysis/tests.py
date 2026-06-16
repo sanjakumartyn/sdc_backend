@@ -304,7 +304,8 @@ class CompanyAnalysisServiceTestCase(TestCase):
 
         result = CompanyAnalysisService.analyze({"company_name": "Asian Paints"})
 
-        self.assertEqual(result["strategic_fit"]["score"], 94)
+        self.assertIsNone(result["strategic_fit"]["score"])
+        self.assertEqual(result["strategic_fit"]["alignment_level"], "insufficient_evidence")
 
     @patch.dict("os.environ", {**TEST_ENV, "GROQ_API_KEY": "test-key"}, clear=False)
     @patch("features.companyAnalysis.service.CompanyAnalysisService._fetch_crm_deals", return_value=[])
@@ -327,8 +328,8 @@ class CompanyAnalysisServiceTestCase(TestCase):
 
         result = CompanyAnalysisService.analyze({"company_name": "Asian Paints"})
 
-        self.assertEqual(result["strategic_fit"]["score"], 92)
-        self.assertEqual(result["strategic_fit"]["alignment_level"], "High Alignment Probability")
+        self.assertIsNone(result["strategic_fit"]["score"])
+        self.assertEqual(result["strategic_fit"]["alignment_level"], "insufficient_evidence")
         self.assertEqual(
             result["meeting_prep"]["key_discussion_topics"][0],
             "Reliance-backed robotics startup Addverb Technologies is looking to raise expansion funding",
@@ -351,7 +352,7 @@ class CompanyAnalysisServiceTestCase(TestCase):
         self.assertIn("Stick Packaging Market", result["meeting_prep"]["key_discussion_topics"])
         self.assertIn("Huhtamaki is a leading global provider", result["intelligence_overview"]["company_overview"])
         self.assertIn("Stick Packaging Market growth", result["intelligence_overview"]["strategic_goals"])
-        self.assertEqual(result["ai_needs_prediction"][0]["confidence"], 80)
+        self.assertEqual(result["ai_needs_prediction"][0]["confidence"], 70)
         self.assertNotEqual(result["ai_needs_prediction"][0]["reason"], "Insufficient evidence.")
         self.assertEqual([item["novachem_solution"] for item in result["solution_mapping"]], ["ESG Vision Audit", "CarbonZero Prime"])
 
@@ -482,7 +483,10 @@ class CompanyAnalysisServiceTestCase(TestCase):
             huhtamaki_context(),
         )
 
-        self.assertEqual(needs, [{"need": "ESG performance monitoring", "confidence": 70, "reason": "Supported by sustainability evidence."}])
+        self.assertEqual(needs[0]["need"], "ESG performance monitoring")
+        self.assertEqual(needs[0]["confidence"], 70)
+        self.assertEqual(needs[0]["reason"], "Supported by sustainability evidence.")
+        self.assertTrue(needs[0]["evidence"])
 
     def test_noisy_agent_output_is_cleaned_into_profile_signals(self):
         signals = CompanyAnalysisService._extract_agent_signals(noisy_asian_paints_agent_output())
@@ -516,7 +520,13 @@ class CompanyAnalysisServiceTestCase(TestCase):
             context,
         )
 
-        self.assertEqual(mappings, [{"requirement": "ESG Solutions", "novachem_solution": "ESG Vision Audit", "match_percent": 75, "deal_value": None, "reason": "Retrieved product match: ESG Solutions."}])
+        self.assertEqual(mappings[0]["requirement"], "ESG Solutions")
+        self.assertEqual(mappings[0]["novachem_solution"], "ESG Vision Audit")
+        self.assertEqual(mappings[0]["match_percent"], 75)
+        self.assertIsNone(mappings[0]["deal_value"])
+        self.assertEqual(mappings[0]["reason"], "Retrieved product match: ESG Solutions.")
+        self.assertEqual(mappings[0]["confidence"], 75)
+        self.assertTrue(mappings[0]["evidence"])
 
     def test_product_matches_create_fallback_mapping_when_supported_by_evidence(self):
         context = huhtamaki_context()

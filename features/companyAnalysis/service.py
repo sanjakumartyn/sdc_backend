@@ -518,6 +518,94 @@ class CompanyAnalysisService:
         return ""
 
     @staticmethod
+    def _normalize_evidence_items(value: Any) -> List[Dict[str, str]]:
+        if not isinstance(value, list):
+            return []
+        evidence = []
+        for item in value[:CompanyAnalysisService.MAX_MATCHES]:
+            if not isinstance(item, dict):
+                continue
+            source = CompanyAnalysisService._truncate_text(item.get("source") or item.get("source_type") or item.get("type"))
+            finding = CompanyAnalysisService._truncate_text(item.get("finding") or item.get("summary") or item.get("statement") or item.get("reason"))
+            if source and finding:
+                evidence.append({"source": source, "finding": finding})
+        return evidence
+
+    @staticmethod
+    def _strategic_fit_evidence(context: Dict[str, Any]) -> List[Dict[str, str]]:
+        evidence = []
+        for signal in context.get("agent_signals") or []:
+            if not isinstance(signal, dict):
+                continue
+            source = CompanyAnalysisService._truncate_text(signal.get("source_type") or signal.get("type") or "agent_signal")
+            finding = CompanyAnalysisService._truncate_text(signal.get("summary") or signal.get("title"))
+            if source and finding:
+                evidence.append({"source": source, "finding": finding})
+
+        for product in context.get("product_matches") or []:
+            if not isinstance(product, dict) or product.get("error") or product.get("skipped"):
+                continue
+            product_name = CompanyAnalysisService._product_display_name(product)
+            finding = CompanyAnalysisService._truncate_text(product.get("description") or product.get("category") or product.get("application"))
+            if product_name and finding:
+                evidence.append({"source": "product_rag", "finding": f"{product_name}: {finding}"})
+
+        for case_study in context.get("case_study_matches") or []:
+            if not isinstance(case_study, dict) or case_study.get("error") or case_study.get("skipped"):
+                continue
+            title = CompanyAnalysisService._truncate_text(case_study.get("title"))
+            finding = CompanyAnalysisService._truncate_text(case_study.get("challenge") or case_study.get("solution") or case_study.get("results"))
+            if title and finding:
+                evidence.append({"source": "case_study_rag", "finding": f"{title}: {finding}"})
+
+        return evidence[:CompanyAnalysisService.MAX_MATCHES]
+
+    @staticmethod
+    def _confidence_from_evidence_count(count: int) -> int:
+        if count >= 3:
+            return 85
+        if count == 2:
+            return 70
+        if count == 1:
+            return 40
+        return 0
+
+    @staticmethod
+    def _need_evidence(need: str, context: Dict[str, Any]) -> List[Dict[str, str]]:
+        need_tokens = [token for token in CompanyAnalysisService._normalize_lookup_key(need).split() if len(token) >= 4]
+        evidence = []
+        for item in CompanyAnalysisService._strategic_fit_evidence(context):
+            finding_key = CompanyAnalysisService._normalize_lookup_key(item.get("finding"))
+            if not need_tokens or any(token in finding_key for token in need_tokens):
+                evidence.append(item)
+        return evidence[:CompanyAnalysisService.MAX_MATCHES]
+
+    @staticmethod
+    def _mapping_evidence(product: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, str]]:
+        evidence = []
+        solution = CompanyAnalysisService._product_display_name(product)
+        product_summary = CompanyAnalysisService._truncate_text(product.get("description") or product.get("application") or product.get("category")).rstrip(".")
+        if solution and product_summary:
+            evidence.append({"source": "product_rag", "finding": f"{solution}: {product_summary}"})
+        for title in CompanyAnalysisService._case_study_titles_for_product(solution, context):
+            evidence.append({"source": "case_study_rag", "finding": f"{title} references {solution}"})
+        signal = CompanyAnalysisService._first_evidence_summary(context.get("agent_signals"))
+        if signal:
+            evidence.append({"source": "agent_signal", "finding": signal})
+        return evidence[:CompanyAnalysisService.MAX_MATCHES]
+
+    @staticmethod
+    def _mapping_confidence(item: Dict[str, Any], product: Dict[str, Any], context: Dict[str, Any]) -> int:
+        explicit = CompanyAnalysisService._percent(item.get("confidence") or item.get("confidence_score"), default=0)
+        if explicit:
+            return explicit
+        evidence_count = len(CompanyAnalysisService._mapping_evidence(product, context))
+        return max(
+            CompanyAnalysisService._normalized_mapping_match_percent(item, product, context),
+            CompanyAnalysisService._confidence_from_evidence_count(evidence_count),
+        )
+
+    @staticmethod
     def _product_match_lookup(context: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         lookup = {}
         for product in context.get("product_matches") or []:
@@ -575,6 +663,8 @@ class CompanyAnalysisService:
                 "match_percent": CompanyAnalysisService._fallback_match_percent(product, context),
                 "deal_value": None,
                 "reason": CompanyAnalysisService._mapping_reason(product, context),
+                "confidence": CompanyAnalysisService._fallback_match_percent(product, context),
+                "evidence": CompanyAnalysisService._mapping_evidence(product, context),
             })
         return mappings
 
