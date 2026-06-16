@@ -84,6 +84,10 @@ class CallAgentsService:
         }
 
     @staticmethod
+    def _build_url(base_url: str, path: str) -> str:
+        return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+
+    @staticmethod
     def _post_json(
         *,
         base_url: str,
