@@ -31,6 +31,7 @@ api.add_router("/signals", signals_router, tags=["Signals"])
 api.add_router("/deals", deals_router, tags=["Deals"])
 api.add_router("/companydata", companydata_router, tags=["Company Data"])
 api.add_router("/company-analysis", company_analysis_router, tags=["Company Analysis"])
+api.add_router("/dashboard", dashboard_router, tags=["Dashboard"])
 
 
 urlpatterns = [

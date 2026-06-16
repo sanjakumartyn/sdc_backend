@@ -6,7 +6,7 @@ from common.response.response_builder import ResponseBuilder
 
 router = Router()
 
-@router.get("/dashboard-summary")
+@router.get("")
 def get_dashboard_summary(request):
     """
     Retrieves a temporary dashboard summary.
