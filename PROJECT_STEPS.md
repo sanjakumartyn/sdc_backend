@@ -57,22 +57,18 @@ RAG_MICROSERVICE_BASE_URL=http://localhost:8002
 RAG_MICROSERVICE_QUESTION_PATH=/question
 RAG_MICROSERVICE_TIMEOUT=30
 
-RAG_PRODUCTS_BASE_URL=http://127.0.0.1:8001
-RAG_PRODUCTS_FIND_PATH=/api/products/find
-RAG_PRODUCTS_TIMEOUT=30
-
-RAG_CASESTUDIES_BASE_URL=http://127.0.0.1:8001
-RAG_CASESTUDIES_FIND_PATH=/api/case-studies/find
-RAG_CASESTUDIES_TIMEOUT=30
-
 OCR_MICROSERVICE_BASE_URL=http://127.0.0.1:8001
 OCR_EXTRACT_DOCUMENTS_PATH=/extract/documents
 OCR_MICROSERVICE_TIMEOUT=60
+
+COMPANY_DATA_ENABLED=true
+COMPANY_DATA_LIMIT_PER_COLLECTION=10
 
 GROQ_API_KEY=
 GROQ_MODEL=llama-3.1-8b-instant
 GROQ_API_URL=https://api.groq.com/openai/v1/chat/completions
 GROQ_TIMEOUT=30
+GROQ_KEYWORD_LIMIT=8
 ```
 
 Database behavior is resolved from `DATABASE_URL` in `config/settings.py`:
@@ -128,6 +124,7 @@ Current router prefixes:
 - `features.signals.routes` is mounted at `/api/signals`.
 - `features.deals.routes` is mounted at `/api/deals`.
 - `features.companydata.routes` is mounted at `/api/companydata`.
+- `features.companyAnalysis.routes` is mounted at `/api/company-analysis`.
 
 ## 7. Standard Response Format
 
@@ -177,6 +174,7 @@ Custom exception types:
 - `ForbiddenException` maps to HTTP `403`.
 - `NotFoundException` maps to HTTP `404`.
 - `ServiceUnavailableException` maps to HTTP `503`.
+- `GroqApiKeyMissingException` maps to HTTP `503` with code `GROQ_API_KEY_MISSING`.
 
 ## 9. Signals Feature Flow
 
@@ -339,8 +337,12 @@ Request body:
 
 ```json
 {
-  "company": "Example Company",
-  "documents": ["document-id-or-url"]
+  "account_id": "asian_paints_001",
+  "company_name": "Asian Paints",
+  "website_url": "https://www.asianpaints.com",
+  "company": "Asian Paints",
+  "documents": ["document-id-or-url"],
+  "question": "optional product question"
 }
 ```
 
@@ -350,58 +352,144 @@ Multipart request with OCR document extraction:
 POST http://127.0.0.1:8000/api/question
 Content-Type: multipart/form-data
 
-company=Example Company
+account_id=asian_paints_001
+company_name=Asian Paints
+website_url=https://www.asianpaints.com
 file=@C:\Users\rmsan\Downloads\EV_Fleet_Incident_Management (1).pdf
 ```
 
 Processing steps:
 
-1. Validate that `company` is present and not blank.
+1. Validate that `company_name` or backward-compatible `company` is present and not blank.
 2. Accept `documents` from the request body.
 3. Convert document values to trimmed strings and remove blanks.
 4. If files are uploaded, send each file to the OCR microservice at `OCR_MICROSERVICE_BASE_URL + OCR_EXTRACT_DOCUMENTS_PATH`.
 5. Retrieve internal company data through `CompanyDataService.get_all_data()`.
-6. Send the company and documents to the agent microservice.
-7. Send the same company and documents to the RAG microservice.
-8. Treat the OCR microservice as required when a file is uploaded.
-9. Treat the company-data lookup as optional; if it fails, return `company_data_unavailable`.
-10. Treat the agent microservice as required.
-11. Treat the RAG microservice as optional.
-12. Build a synthesis prompt from the agent, RAG, OCR extraction, and company-data responses.
-13. If `GROQ_API_KEY` is configured, call Groq chat completions.
-14. Return upstream responses, company data, OCR extraction data, and synthesized answer metadata.
+6. Send `account_id`, `company_name`, and `website_url` to the agent microservice.
+7. Ask Groq to generate search keywords and a product RAG question from the company, documents, user question, agent response, OCR extraction, and company data.
+8. Send the generated product question to the product RAG microservice with configured project and filter values.
+9. Send the generated product question to the case-study RAG microservice with the `companycasestudies` project and `MY_Company_Case_Studies` filter tag.
+10. Treat the OCR microservice as required when a file is uploaded.
+11. Treat the company-data lookup as optional; if it fails, include `company_data_unavailable` in the internal Groq context.
+12. Treat the agent microservice as required.
+13. Treat product RAG and case-study RAG as optional; if either service fails, include the upstream error in the internal Groq context and continue.
+14. Build a synthesis prompt from the agent, product RAG, case-study RAG, OCR extraction, company-data responses, generated keywords, and product question.
+15. Call Groq chat completions for the final answer. `GROQ_API_KEY` is required for this endpoint to succeed.
+16. Return only the final answer. Upstream responses, company data, OCR extraction data, generated keywords, and RAG source chunks are used internally but are not exposed in the normal response.
 
 Response data shape:
 
 ```json
 {
-  "company": "Example Company",
-  "documents": ["document-id-or-url"],
-  "upstream": {
-    "agent": {},
-    "rag": {},
-    "ocr": [],
-    "company_data": {}
-  },
-  "company_data": {},
-  "ocr_extractions": [],
-  "synthesized_answer": "Final answer",
-  "synthesis_provider": "groq",
-  "synthesis_model": "llama-3.1-8b-instant",
-  "synthesis_error": null
+  "answer": "Final Groq-generated answer for the user's question."
 }
 ```
 
-If `GROQ_API_KEY` is missing, the endpoint still returns upstream data and sets:
+If `GROQ_API_KEY` is missing, the endpoint returns an error instead of raw upstream data:
 
 ```json
 {
-  "synthesis_provider": "groq",
-  "synthesis_error": "groq_api_key_missing"
+  "success": false,
+  "data": null,
+  "error": {
+    "message": "Groq API key is required to generate the final answer",
+    "code": "GROQ_API_KEY_MISSING",
+    "details": {}
+  },
+  "timestamp": "2026-06-05T00:00:00+00:00"
 }
 ```
 
 ## 12. Shared Utility Steps
+
+## 12. Company Analysis Dashboard Flow
+
+Files:
+
+- Schemas: `features/companyAnalysis/schema.py`
+- Service: `features/companyAnalysis/service.py`
+- Routes: `features/companyAnalysis/routes.py`
+
+Endpoints:
+
+```text
+POST /api/company-analysis
+POST /api/company-analysis/deal-coach
+```
+
+Dashboard request:
+
+```json
+{
+  "account_id": "asian_paints_001",
+  "company_name": "Asian Paints",
+  "website_url": "https://www.asianpaints.com",
+  "documents": [],
+  "question": "Create full company analysis dashboard"
+}
+```
+
+Dashboard response data shape:
+
+```json
+{
+  "company_name": "Asian Paints",
+  "strategic_fit": {
+    "score": 94,
+    "alignment_level": "High Alignment Probability",
+    "explanation": "Evidence-based explanation"
+  },
+  "meeting_prep": {
+    "key_discussion_topics": [],
+    "business_priorities": [],
+    "executive_talking_points": [],
+    "potential_objections": [],
+    "recommended_agenda": [],
+    "qbr_summary": "Evidence-based QBR summary"
+  },
+  "intelligence_overview": {
+    "company_overview": "Evidence-based overview",
+    "industry_position": "Evidence-based position",
+    "business_model": "Evidence-based model",
+    "strategic_goals": [],
+    "expansion_initiatives": [],
+    "digital_transformation_efforts": [],
+    "sustainability_commitments": []
+  },
+  "ai_needs_prediction": [],
+  "solution_mapping": []
+}
+```
+
+Deal coach request:
+
+```json
+{
+  "company_name": "Asian Paints",
+  "account_id": "asian_paints_001",
+  "message": "Which products should I pitch?"
+}
+```
+
+Deal coach response data shape:
+
+```json
+{
+  "answer": "Context-aware sales coaching answer"
+}
+```
+
+Processing steps:
+
+1. Validate that `company_name` or backward-compatible `company` is present.
+2. Gather agent/web intelligence, company data, CRM deals, OCR extraction, product RAG, and case-study RAG.
+3. Compact all evidence before sending it to Groq so raw `source_chunks` and debug payloads are not sent.
+4. Ask Groq for strict JSON matching the dashboard schema.
+5. Validate the Groq JSON with Pydantic before returning it.
+6. Return structured dashboard data only; raw upstream payloads are not exposed.
+7. For deal coach, use the same compact context plus the user message and return only `answer`.
+
+## 13. Shared Utility Steps
 
 `common/utils/helpers.py` contains reusable helpers:
 
@@ -410,7 +498,7 @@ If `GROQ_API_KEY` is missing, the endpoint still returns upstream data and sets:
 
 These helpers are used by route and service layers to keep validation behavior consistent.
 
-## 13. Run Tests
+## 14. Run Tests
 
 Run all Django tests:
 
@@ -428,7 +516,7 @@ Feature tests currently cover:
 - Deal invalid stage validation.
 - Deal stage-to-probability transitions.
 
-## 14. Add A New Feature
+## 15. Add A New Feature
 
 Use the existing Repository-Service-Route pattern.
 
@@ -446,7 +534,7 @@ Steps:
 10. Add focused tests for service rules and important endpoint behavior.
 11. Run migrations and tests.
 
-## 15. Notes And Current Gaps
+## 16. Notes And Current Gaps
 
 - `features.callAgents` is imported in `config/urls.py`, but it is not listed in `INSTALLED_APPS`. This is acceptable because it has no Django models, but add it if app configuration or signals are introduced later.
 - The current `README.md` contains stale folder names like `core`, `shared`, and `modules`; the actual folders are `config`, `common`, and `features`.

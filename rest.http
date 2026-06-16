@@ -1,0 +1,34 @@
+
+###
+POST http://127.0.0.1:8000/api/company-analysis
+Content-Type: application/json
+
+{
+  "account_id": "openAI_001",
+  "company_name": "Nestle India",
+  "website_url": "https://www.nestle.in",
+  "question": "Create full company analysis dashboard",
+  "documents": []
+}
+
+
+###
+POST http://127.0.0.1:8000/api/company-analysis
+Content-Type: application/json
+
+{
+  "account_id": "AsianPaints_001",
+  "company_name": "Asian Paints",
+  "website_url": "https://www.asianpaints.com",
+  "question": "Create full company analysis dashboard",
+  "documents": []
+}
+
+
+###
+POST   http://127.0.0.1:8003/extract
+Content-Type: application/json
+
+{
+    "url":"https://docs.google.com/document/d/1mJD60xDYyH4zJpkzVIknSumFYybudWpj/edit?usp=sharing&ouid=113619637214956621945&rtpof=true&sd=true"
+}

@@ -1,12 +1,13 @@
 from typing import Any, Optional, Dict
 
+
 class APIException(Exception):
     """Base exception for all system-generated API errors."""
     def __init__(
-        self, 
-        message: str, 
-        status_code: int = 400, 
-        error_code: str = "BAD_REQUEST", 
+        self,
+        message: str,
+        status_code: int = 400,
+        error_code: str = "BAD_REQUEST",
         details: Optional[Dict[str, Any]] = None
     ):
         super().__init__(message)
@@ -68,4 +69,64 @@ class ServiceUnavailableException(APIException):
             status_code=503,
             error_code="SERVICE_UNAVAILABLE",
             details=details
+        )
+
+
+class GroqApiKeyMissingException(APIException):
+    """Exception raised when Groq is required but not configured."""
+    def __init__(
+        self,
+        message: str = "Groq API key is required to generate the final answer",
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            message=message,
+            status_code=503,
+            error_code="GROQ_API_KEY_MISSING",
+            details=details,
+        )
+
+
+class GroqModelNotFoundException(APIException):
+    """Exception raised when the configured Groq model is unavailable."""
+    def __init__(
+        self,
+        message: str = "Configured Groq model is not available",
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            message=message,
+            status_code=503,
+            error_code="GROQ_MODEL_NOT_FOUND",
+            details=details,
+        )
+
+
+class GroqPayloadTooLargeException(APIException):
+    """Exception raised when Groq rejects a request payload as too large."""
+    def __init__(
+        self,
+        message: str = "Groq request payload is too large",
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            message=message,
+            status_code=503,
+            error_code="GROQ_PAYLOAD_TOO_LARGE",
+            details=details,
+        )
+
+
+class GroqDashboardJsonInvalidException(APIException):
+    """Exception raised when Groq does not return valid dashboard JSON."""
+    def __init__(
+        self,
+        message: str = "Unable to generate valid company analysis dashboard JSON",
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            message=message,
+            status_code=503,
+            error_code="GROQ_DASHBOARD_JSON_INVALID",
+            details=details,
         )

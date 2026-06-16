@@ -3,23 +3,33 @@ from typing import Any, Dict, List, Tuple
 
 from ninja import Router
 
+from common.exception.base_exception import BadRequestException
 from common.response.base_response import APIEnvelope
 from common.response.response_builder import ResponseBuilder
-from common.exception.base_exception import BadRequestException
-from features.callAgents.schema import QuestionResponseSchema
-from features.callAgents.service import CallAgentsService
+from features.companyAnalysis.schema import (
+    CompanyAnalysisResponseSchema,
+    DealCoachRequestSchema,
+    DealCoachResponseSchema,
+)
+from features.companyAnalysis.service import CompanyAnalysisService
 
 router = Router()
 
 
-@router.post("/question", response={200: APIEnvelope[QuestionResponseSchema]})
-def question(request):
-    payload, uploaded_files = _parse_question_request(request)
-    result = CallAgentsService.question(payload, uploaded_files=uploaded_files)
+@router.post("", response={200: APIEnvelope[CompanyAnalysisResponseSchema]})
+def analyze_company(request):
+    payload, uploaded_files = _parse_analysis_request(request)
+    result = CompanyAnalysisService.analyze(payload, uploaded_files=uploaded_files)
     return ResponseBuilder.success(result)
 
 
-def _parse_question_request(request) -> Tuple[Dict[str, Any], List[Any]]:
+@router.post("/deal-coach", response={200: APIEnvelope[DealCoachResponseSchema]})
+def deal_coach(request, payload: DealCoachRequestSchema):
+    result = CompanyAnalysisService.deal_coach(payload.model_dump())
+    return ResponseBuilder.success(result)
+
+
+def _parse_analysis_request(request) -> Tuple[Dict[str, Any], List[Any]]:
     content_type = request.META.get("CONTENT_TYPE", "")
 
     if content_type.startswith("multipart/form-data"):
@@ -38,7 +48,7 @@ def _parse_question_request(request) -> Tuple[Dict[str, Any], List[Any]]:
             "company_name": request.POST.get("company_name", ""),
             "company": request.POST.get("company", ""),
             "website_url": request.POST.get("website_url", ""),
-            "question": request.POST.get("question", ""),
+            "question": request.POST.get("question", "Create full company analysis dashboard"),
             "documents": documents,
         }, uploaded_files
 
@@ -67,4 +77,3 @@ def _parse_documents_value(value: str) -> List[str]:
         return [str(item) for item in parsed]
 
     return [value]
-

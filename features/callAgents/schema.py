@@ -1,17 +1,17 @@
-from typing import Any, Dict, List, Optional
+from typing import List, Optional, Dict, Any
 
 from pydantic import BaseModel, Field
 
 
 class QuestionRequestSchema(BaseModel):
-    company: str = Field(..., min_length=1, description="Company name to query")
+    account_id: Optional[str] = Field(default=None, description="External account identifier")
+    company_name: Optional[str] = Field(default=None, description="Company name to query")
+    company: Optional[str] = Field(default=None, description="Backward-compatible company name")
+    website_url: Optional[str] = Field(default=None, description="Company website URL")
+    question: Optional[str] = Field(default=None, description="Optional user/product search question")
     documents: List[str] = Field( 
         default=[],
         description="List of document URLs or document IDs"
-    )
-    question: Optional[str] = Field(
-        default=None,
-        description="Question/query text for RAG endpoints"
     )
     project_id: Optional[str] = Field(
         default="default",
@@ -47,8 +47,7 @@ class QuestionResponseSchema(BaseModel):
     company: str
     documents: List[str] = Field(default_factory=list)
     upstream: Dict[str, Any]
-    rag_products: Dict[str, Any] = Field(default_factory=dict)
-    rag_casestudies: Dict[str, Any] = Field(default_factory=dict)
+    company_data: Dict[str, Any] = Field(default_factory=dict)
     ocr_extractions: List[Dict[str, Any]] = Field(default_factory=list)
     synthesized_answer: Optional[str] = None
     synthesis_provider: Optional[str] = None

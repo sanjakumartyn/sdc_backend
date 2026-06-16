@@ -22,6 +22,7 @@ from features.callAgents.routes import router as call_agents_router
 from features.companydata.routes import router as companydata_router
 from features.dashboard.routes import router as dashboard_router
 from features.ocr.routes import router as ocr_router
+from features.companyAnalysis.routes import router as company_analysis_router
 
 # Register API routes with clear prefixing and tags for Swagger grouping
 api.add_router("/ocr", ocr_router, tags=["OCR"])
@@ -29,6 +30,7 @@ api.add_router("", call_agents_router, tags=["Question"])
 api.add_router("/signals", signals_router, tags=["Signals"])
 api.add_router("/deals", deals_router, tags=["Deals"])
 api.add_router("/companydata", companydata_router, tags=["Company Data"])
+api.add_router("/company-analysis", company_analysis_router, tags=["Company Analysis"])
 
 
 urlpatterns = [
