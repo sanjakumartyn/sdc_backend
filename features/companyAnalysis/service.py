@@ -49,31 +49,38 @@ class CompanyAnalysisService:
         return response
 
     @staticmethod
-    def deal_coach(payload: Dict[str, Any]) -> Dict[str, str]:
+    def deal_coach(payload: Dict[str, Any], uploaded_files: Optional[Sequence[Any]] = None) -> Dict[str, str]:
         message = (payload.get("message") or "").strip()
         if not message:
             raise BadRequestException("message is required")
 
-        context = CompanyAnalysisService._build_context(
-            {
-                "company_name": payload.get("company_name"),
-                "company": payload.get("company"),
-                "account_id": payload.get("account_id"),
-                "website_url": payload.get("website_url"),
-                "question": message,
-                "documents": [],
-            },
-            uploaded_files=[],
-        )
+        analysis_context = payload.get("analysis_context")
+        if analysis_context:
+            context = analysis_context
+        else:
+            context = CompanyAnalysisService._build_context(
+                {
+                    "company_name": payload.get("company_name"),
+                    "company": payload.get("company"),
+                    "account_id": payload.get("account_id"),
+                    "website_url": payload.get("website_url"),
+                    "question": message,
+                    "documents": [],
+                },
+                uploaded_files=[],
+            )
+
+        # Process and merge OCR text if documents were attached in the chat
+        if uploaded_files:
+            ocr_extractions = CallAgentsService._extract_uploaded_documents(uploaded_files)
+            if "ocr_evidence" not in context:
+                context["ocr_evidence"] = []
+            context["ocr_evidence"].extend(CompanyAnalysisService._extract_ocr_evidence(ocr_extractions))
+
         CompanyAnalysisService._debug_print("deal_coach_context", context)
 
-        result = CompanyAnalysisService._call_deal_coach_groq(context=context, message=message)
-        answer = (result.get("content") or "").strip()
-        if not answer:
-            raise ServiceUnavailableException(
-                message="Unable to generate the deal coach answer",
-                details={"provider": result.get("provider"), "model": result.get("model"), "error": result.get("error")},
-            )
+        from features.dealCoach.service import DealCoachService
+        answer = DealCoachService.get_mistral_response(message=message, context=context)
 
         return {"answer": answer}
 

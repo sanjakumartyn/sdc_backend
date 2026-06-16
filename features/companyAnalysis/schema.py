@@ -76,6 +76,7 @@ class DealCoachRequestSchema(BaseModel):
     account_id: Optional[str] = None
     website_url: Optional[str] = None
     message: str
+    analysis_context: Optional[dict] = None
 
 
 class DealCoachResponseSchema(BaseModel):

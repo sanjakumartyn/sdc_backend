@@ -13,7 +13,7 @@ Content-Type: application/json
 
 
 ###
-POST http://127.0.0.1:8000/api/company-analysis
+POST https://semisweet-craziness-dreamless.ngrok-free.dev/api/company-analysis
 Content-Type: application/json
 
 {

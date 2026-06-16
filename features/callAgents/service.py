@@ -123,11 +123,13 @@ class CallAgentsService:
 
     @staticmethod
     def _fetch_agent_response(account_id: str, company_name: str, website_url: str) -> Dict[str, Any]:
+        if not account_id:
+            account_id = f"{re.sub(r'[^a-zA-Z0-9]', '', company_name)}_001"
+            
         request_payload = {
             "company_name": company_name,
+            "account_id": account_id,
         }
-        if account_id:
-            request_payload["account_id"] = account_id
         if website_url:
             request_payload["website_url"] = website_url
 
