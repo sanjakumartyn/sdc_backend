@@ -11,13 +11,13 @@ class CompanyDataService:
         try:
             # For django_mongodb_backend, access the database through the connection
             connection = connections['default']
-            # The database attribute triggers the connection if not already connected
             db = connection.database
             if db is None:
                 raise BadRequestException(
                     "Database connection returned None. Check DATABASE_URL in .env has correct format and credentials."
                 )
-            return db
+            # Direct the service to the companydetails database containing the target data
+            return db.client['companydetails']
         except BadRequestException:
             raise
         except Exception as e:

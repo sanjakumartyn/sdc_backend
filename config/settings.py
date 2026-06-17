@@ -129,4 +129,6 @@ DEFAULT_AUTO_FIELD = 'django_mongodb_backend.fields.ObjectIdAutoField'
 CORS_ALLOW_ALL_ORIGINS = True  # Set to False in production and specify CORS_ALLOWED_ORIGINS
 CORS_ALLOW_CREDENTIALS = True
 
-# JWT Settings removed: authentication via JWT disabled
+# Media files (for dynamically generated documents)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'

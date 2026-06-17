@@ -34,10 +34,14 @@ api.add_router("/company-analysis", company_analysis_router, tags=["Company Anal
 api.add_router("/dashboard", dashboard_router, tags=["Dashboard"])
 
 
+from django.conf import settings
+from django.conf.urls.static import static
+
 urlpatterns = [
     path('', TemplateView.as_view(template_name='index.html')),
     path('api/history', views.history),
     path('api/chat', views.chat),
     path('api/details/<str:name>', views.company_details),
+    path('api/generate-document', views.generate_document),
     path('api/', api.urls),
-]
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

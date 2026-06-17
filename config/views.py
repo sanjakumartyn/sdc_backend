@@ -134,3 +134,25 @@ def chat(request):
             reply = "Error processing message."
         return JsonResponse({"reply": reply})
     return JsonResponse({"reply": "Only POST allowed."})
+
+@csrf_exempt
+def generate_document(request):
+    if request.method != "POST":
+        return JsonResponse({"status": "error", "message": "Only POST allowed"}, status=405)
+    try:
+        body = json.loads(request.body)
+        company = body.get("company")
+        document_type = body.get("documentType")
+        
+        if not company:
+            return JsonResponse({"status": "error", "message": "company name is required"}, status=400)
+        if not document_type:
+            return JsonResponse({"status": "error", "message": "documentType is required"}, status=400)
+            
+        from features.document_generation.service import DocumentGenerationService
+        result = DocumentGenerationService.generate_document(company, document_type)
+        return JsonResponse(result)
+    except Exception as e:
+        import logging
+        logging.error(f"Error in generate_document view: {e}", exc_info=True)
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)

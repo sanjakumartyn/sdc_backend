@@ -82,7 +82,9 @@ class DashboardService:
             active_customers = crm_col.count_documents({"status": "Active"})
             
             total_props = proposals_col.count_documents({})
-            won_props = proposals_col.count_documents({"proposalStatus": "Approved"})
+            # Categorize advanced proposal stages (Negotiation, Sent, Testing, Pilot, Exec Approval) as won/approved
+            approved_stages = ["Approved", "Executive Approval", "Negotiation", "Pilot Phase", "Technical Review", "Sample Testing", "Proposal Sent"]
+            won_props = proposals_col.count_documents({"proposalStatus": {"$in": approved_stages}})
             success_rate = (won_props / total_props * 100) if total_props > 0 else 72
 
             if total_products > 0:
@@ -140,12 +142,21 @@ class DashboardService:
                 }
 
             # Proposal Analytics
+            # Proposal Analytics aligned with MongoDB schema values
             if total_props > 0:
+                approved_stages = ["Approved", "Executive Approval", "Negotiation", "Pilot Phase", "Technical Review", "Sample Testing", "Proposal Sent"]
+                pending_stages = ["Under Review"]
+                
+                approved_count = proposals_col.count_documents({"proposalStatus": {"$in": approved_stages}})
+                pending_count = proposals_col.count_documents({"proposalStatus": {"$in": pending_stages}})
+                # Any other status (including None or missing status) counts as rejected/other to sum to total
+                rejected_count = total_props - (approved_count + pending_count)
+                
                 summary["proposalAnalytics"] = {
                     "total": total_props,
-                    "approved": proposals_col.count_documents({"proposalStatus": "Approved"}),
-                    "rejected": proposals_col.count_documents({"proposalStatus": "Rejected"}),
-                    "pending": proposals_col.count_documents({"proposalStatus": "Under Review"})
+                    "approved": approved_count,
+                    "rejected": max(0, rejected_count),
+                    "pending": pending_count
                 }
 
         except Exception as e:
