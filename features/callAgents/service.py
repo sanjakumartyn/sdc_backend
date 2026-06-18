@@ -147,8 +147,8 @@ class CallAgentsService:
     def _fetch_product_rag_response(product_question: str) -> Dict[str, Any]:
         request_payload = {
             "question": product_question,
-            "project_id": os.getenv("PRODUCT_RAG_PROJECT_ID", "companyproduct"),
-            "project_key": os.getenv("PRODUCT_RAG_PROJECT_KEY", "companyproduct"),
+            "project_id": os.getenv("PRODUCT_RAG_PROJECT_ID", "product"),
+            "project_key": os.getenv("PRODUCT_RAG_PROJECT_KEY", "product"),
             "filters": {
                 "tag": os.getenv("PRODUCT_RAG_FILTER_TAG", "MY_Company_Product"),
             },
@@ -202,8 +202,8 @@ class CallAgentsService:
 
         request_payload = {
             "question": product_question,
-            "project_id": os.getenv("CASE_STUDY_RAG_PROJECT_ID", "companycasestudies"),
-            "project_key": os.getenv("CASE_STUDY_RAG_PROJECT_KEY", "companycasestudies"),
+            "project_id": os.getenv("CASE_STUDY_RAG_PROJECT_ID", "casestudy"),
+            "project_key": os.getenv("CASE_STUDY_RAG_PROJECT_KEY", "casestudy"),
             "filters": {
                 "tag": os.getenv("CASE_STUDY_RAG_FILTER_TAG", "MY_Company_Case_Studies"),
             },
@@ -410,8 +410,8 @@ class CallAgentsService:
         
         request_payload = {
             "question": question,
-            "project_id": project_id or "casestudies",
-            "project_key": project_key or "casestudies",
+            "project_id": project_id or "casestudy",
+            "project_key": project_key or "casestudy",
             "filters": filters,
         }
 

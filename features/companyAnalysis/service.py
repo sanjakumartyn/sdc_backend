@@ -15,6 +15,7 @@ from common.exception.base_exception import (
     GroqPayloadTooLargeException,
     ServiceUnavailableException,
 )
+from common.utils.gemini import call_gemini_chat
 from features.callAgents.service import CallAgentsService
 from features.companyAnalysis.schema import CompanyAnalysisResponseSchema
 from features.companydata.service import CompanyDataService
@@ -31,8 +32,8 @@ class CompanyAnalysisService:
     def analyze(payload: Dict[str, Any], uploaded_files: Optional[Sequence[Any]] = None) -> Dict[str, Any]:
         context = CompanyAnalysisService._build_context(payload, uploaded_files=uploaded_files)
         CompanyAnalysisService._debug_print("compact_evidence_context", context)
-        result = CompanyAnalysisService._call_dashboard_groq(context)
-        CompanyAnalysisService._debug_print("groq_parsed_dashboard", result)
+        result = CompanyAnalysisService._call_dashboard_llm(context)
+        CompanyAnalysisService._debug_print("llm_parsed_dashboard", result)
         result = CompanyAnalysisService._normalize_dashboard_result(result, context)
         result["company_name"] = result.get("company_name") or context["company_name"]
         CompanyAnalysisService._debug_print("normalized_dashboard", result)
@@ -79,8 +80,13 @@ class CompanyAnalysisService:
 
         CompanyAnalysisService._debug_print("deal_coach_context", context)
 
-        from features.dealCoach.service import DealCoachService
-        answer = DealCoachService.get_mistral_response(message=message, context=context)
+        result = CompanyAnalysisService._call_deal_coach_llm(context=context, message=message)
+        answer = (result.get("content") or "").strip()
+        if not answer:
+            raise ServiceUnavailableException(
+                message="Unable to generate the deal coach answer",
+                details={"provider": result.get("provider"), "model": result.get("model"), "error": result.get("error")},
+            )
 
         return {"answer": answer}
 
@@ -196,6 +202,29 @@ class CompanyAnalysisService:
         )
 
     @staticmethod
+    def _call_dashboard_llm(context: Dict[str, Any]) -> Dict[str, Any]:
+        result = CompanyAnalysisService._call_llm_chat(
+            messages=[
+                {"role": "system", "content": CompanyAnalysisService._dashboard_system_prompt()},
+                {"role": "user", "content": json.dumps(context, ensure_ascii=True, indent=2, default=str)},
+            ],
+            temperature=0.2,
+        )
+
+        provider = result.get("provider") or CompanyAnalysisService._llm_provider()
+        CompanyAnalysisService._debug_print(f"{provider}_raw_dashboard_content", result.get("content") or "")
+        parsed = CompanyAnalysisService._parse_json_object(result.get("content") or "")
+        if not parsed:
+            raise GroqDashboardJsonInvalidException(
+                details={
+                    "provider": result.get("provider"),
+                    "model": result.get("model"),
+                    "error": f"{provider}_dashboard_json_missing",
+                },
+            )
+        return parsed
+
+    @staticmethod
     def _call_dashboard_groq(context: Dict[str, Any]) -> Dict[str, Any]:
         result = CompanyAnalysisService._call_groq_chat(
             messages=[
@@ -216,6 +245,31 @@ class CompanyAnalysisService:
                 },
             )
         return parsed
+
+    @staticmethod
+    def _call_deal_coach_llm(context: Dict[str, Any], message: str) -> Dict[str, Any]:
+        return CompanyAnalysisService._call_llm_chat(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an AI deal coach for NovaChem Solutions. Answer the sales user's "
+                        "message using only the provided company, product, case study, CRM, OCR, and "
+                        "agent evidence. Be practical, concise, and context-aware."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {"message": message, "context": context},
+                        ensure_ascii=True,
+                        indent=2,
+                        default=str,
+                    ),
+                },
+            ],
+            temperature=0.2,
+        )
 
     @staticmethod
     def _call_deal_coach_groq(context: Dict[str, Any], message: str) -> Dict[str, Any]:
@@ -919,16 +973,18 @@ class CompanyAnalysisService:
             return []
         signals = []
         seen = set()
-        for signal in agent_upstream.get("signals") or []:
+
+        def add_signal(signal: Dict[str, Any]) -> None:
             if not isinstance(signal, dict) or not CompanyAnalysisService._agent_signal_is_useful(signal):
-                continue
-            signal_summary = CompanyAnalysisService._truncate_value(signal)
-            signal_key = CompanyAnalysisService._normalize_lookup_key(
-                f"{signal_summary.get('type')} {signal_summary.get('title')} {signal_summary.get('summary')}"
-            )
+                return
+            signal_summary = CompanyAnalysisService._normalize_agent_signal(signal)
+            signal_key = CompanyAnalysisService._agent_signal_key(signal_summary)
             if signal_key and signal_key not in seen:
                 signals.append(signal_summary)
                 seen.add(signal_key)
+
+        for signal in CompanyAnalysisService._iter_primary_agent_signals(agent_upstream):
+            add_signal(signal)
 
         for signal in CompanyAnalysisService._derive_profile_signals(agent_upstream):
             signal_key = CompanyAnalysisService._normalize_lookup_key(f"{signal.get('type')} {signal.get('title')}")
@@ -936,27 +992,44 @@ class CompanyAnalysisService:
                 signals.append(signal)
                 seen.add(signal_key)
 
+        if len(signals) < CompanyAnalysisService.MAX_AGENT_SIGNALS:
+            for signal in CompanyAnalysisService._iter_secondary_agent_signals(agent_upstream):
+                add_signal(signal)
+                if len(signals) >= CompanyAnalysisService.MAX_AGENT_SIGNALS:
+                    break
+
         if signals:
             return signals[:CompanyAnalysisService.MAX_AGENT_SIGNALS]
 
         return [
             {"source_type": source.get("source_type"), "status": source.get("status"), "content": CompanyAnalysisService._truncate_text(source.get("content"))}
-            for source in (agent_upstream.get("sources") or [])[:CompanyAnalysisService.MAX_AGENT_SIGNALS]
+            for source in CompanyAnalysisService._iter_agent_sources(agent_upstream)[:CompanyAnalysisService.MAX_AGENT_SIGNALS]
             if isinstance(source, dict) and CompanyAnalysisService._source_is_useful(source)
         ]
 
     @staticmethod
     def _agent_signal_is_useful(signal: Dict[str, Any]) -> bool:
-        text = CompanyAnalysisService._flatten_text({
-            "type": signal.get("type"),
-            "title": signal.get("title"),
-            "summary": signal.get("summary"),
-            "intent": signal.get("intent"),
-            "source_type": signal.get("source_type"),
-        })
-        if CompanyAnalysisService._is_noisy_agent_text(text):
+        content_text = CompanyAnalysisService._agent_signal_content_text(signal)
+        if not content_text:
             return False
         business_terms = {
+            "ai",
+            "analytics",
+            "automation",
+            "buying",
+            "capability",
+            "cloud",
+            "competition",
+            "competitive",
+            "crude",
+            "data",
+            "demand",
+            "digital",
+            "financial",
+            "hiring",
+            "input cost",
+            "market",
+            "opportunity",
             "paint",
             "paints",
             "coating",
@@ -983,8 +1056,110 @@ class CompanyAnalysisService:
             "expansion",
             "compliance",
             "supply chain",
+            "transformation",
         }
-        return CompanyAnalysisService._contains_any(text.casefold(), business_terms)
+        return CompanyAnalysisService._contains_any(content_text.casefold(), business_terms)
+
+    @staticmethod
+    def _iter_primary_agent_signals(agent_upstream: Dict[str, Any]) -> List[Dict[str, Any]]:
+        candidates = []
+        for section in CompanyAnalysisService._agent_response_sections(agent_upstream):
+            candidates.extend(signal for signal in (section.get("signals") or []) if isinstance(signal, dict))
+        return candidates
+
+    @staticmethod
+    def _iter_secondary_agent_signals(agent_upstream: Dict[str, Any]) -> List[Dict[str, Any]]:
+        candidates = []
+        for section in CompanyAnalysisService._agent_response_sections(agent_upstream):
+            candidates.extend(signal for signal in (section.get("legacy_rule_signals") or []) if isinstance(signal, dict))
+            agent_results = section.get("agent_results") or {}
+            if isinstance(agent_results, dict):
+                for result in agent_results.values():
+                    if isinstance(result, dict):
+                        candidates.extend(signal for signal in (result.get("signals") or []) if isinstance(signal, dict))
+        return candidates
+
+    @staticmethod
+    def _iter_agent_sources(agent_upstream: Dict[str, Any]) -> List[Dict[str, Any]]:
+        sources = []
+        for section in CompanyAnalysisService._agent_response_sections(agent_upstream):
+            sources.extend(source for source in (section.get("sources") or []) if isinstance(source, dict))
+        return sources
+
+    @staticmethod
+    def _agent_response_sections(agent_upstream: Dict[str, Any]) -> List[Dict[str, Any]]:
+        sections = [agent_upstream]
+        account_intelligence = agent_upstream.get("account_intelligence")
+        if isinstance(account_intelligence, dict):
+            sections.append(account_intelligence)
+        return sections
+
+    @staticmethod
+    def _normalize_agent_signal(signal: Dict[str, Any]) -> Dict[str, Any]:
+        signal_type = CompanyAnalysisService._truncate_text(
+            signal.get("type") or signal.get("signal_type") or signal.get("category") or signal.get("agent")
+        )
+        title = CompanyAnalysisService._truncate_text(
+            signal.get("title") or signal.get("description") or signal.get("evidence") or signal_type
+        )
+        summary = CompanyAnalysisService._agent_signal_summary(signal)
+        if CompanyAnalysisService._normalize_lookup_key(summary) == CompanyAnalysisService._normalize_lookup_key(title):
+            summary = ""
+        normalized = {
+            "type": signal_type,
+            "title": title,
+            "summary": summary,
+            "intent": CompanyAnalysisService._truncate_text(
+                signal.get("intent") or signal.get("classification") or signal.get("demand_trigger")
+            ),
+            "source_type": CompanyAnalysisService._truncate_text(signal.get("source_type") or signal.get("category")),
+            "confidence_score": signal.get("confidence_score"),
+            "priority_score": signal.get("priority_score") or signal.get("impact_score"),
+        }
+        for key in ("demand_trigger", "solution_area", "recommended_action", "role_category", "source_date"):
+            value = CompanyAnalysisService._truncate_text(signal.get(key))
+            if value:
+                normalized[key] = value
+        return {key: value for key, value in normalized.items() if value not in (None, "")}
+
+    @staticmethod
+    def _agent_signal_key(signal: Dict[str, Any]) -> str:
+        return CompanyAnalysisService._normalize_lookup_key(
+            f"{signal.get('type')} {signal.get('title')} {signal.get('summary')} {signal.get('source_type')}"
+        )
+
+    @staticmethod
+    def _agent_signal_summary(signal: Dict[str, Any]) -> str:
+        summary_parts = []
+        for key in ("summary", "description", "evidence", "reasoning", "solution_area", "recommended_action"):
+            value = CompanyAnalysisService._truncate_text(signal.get(key))
+            if value and not CompanyAnalysisService._is_noisy_agent_text(value):
+                summary_parts.append(value)
+        if not summary_parts:
+            for key in ("title", "demand_trigger", "role_category"):
+                value = CompanyAnalysisService._truncate_text(signal.get(key))
+                if value and not CompanyAnalysisService._is_noisy_agent_text(value):
+                    summary_parts.append(value)
+        return CompanyAnalysisService._truncate_text(" ".join(summary_parts))
+
+    @staticmethod
+    def _agent_signal_content_text(signal: Dict[str, Any]) -> str:
+        values = []
+        for key in (
+            "title",
+            "summary",
+            "description",
+            "evidence",
+            "reasoning",
+            "demand_trigger",
+            "solution_area",
+            "recommended_action",
+            "role_category",
+        ):
+            value = CompanyAnalysisService._truncate_text(signal.get(key))
+            if value and not CompanyAnalysisService._is_noisy_agent_text(value):
+                values.append(value)
+        return CompanyAnalysisService._flatten_text(values)
 
     @staticmethod
     def _source_is_useful(source: Dict[str, Any]) -> bool:
@@ -1022,7 +1197,7 @@ class CompanyAnalysisService:
 
     @staticmethod
     def _derive_profile_signals(agent_upstream: Dict[str, Any]) -> List[Dict[str, Any]]:
-        company_profile = agent_upstream.get("company_profile") or {}
+        company_profile = CompanyAnalysisService._extract_company_profile(agent_upstream)
         if not isinstance(company_profile, dict):
             return []
 
@@ -1092,7 +1267,7 @@ class CompanyAnalysisService:
         if not isinstance(agent_upstream, dict):
             return []
 
-        company_profile = agent_upstream.get("company_profile") or {}
+        company_profile = CompanyAnalysisService._extract_company_profile(agent_upstream)
         if not isinstance(company_profile, dict):
             return []
 
@@ -1120,6 +1295,14 @@ class CompanyAnalysisService:
                 unique_products.append(CompanyAnalysisService._truncate_text(prod))
 
         return unique_products[:CompanyAnalysisService.MAX_MATCHES * 2]
+
+    @staticmethod
+    def _extract_company_profile(agent_upstream: Dict[str, Any]) -> Dict[str, Any]:
+        for section in CompanyAnalysisService._agent_response_sections(agent_upstream):
+            company_profile = section.get("company_profile")
+            if isinstance(company_profile, dict):
+                return company_profile
+        return {}
 
     @staticmethod
     def _profile_item_is_useful(value: Any) -> bool:
@@ -1151,6 +1334,15 @@ class CompanyAnalysisService:
             "how does",
             "how can i",
             "public notice",
+            "quotation calculator",
+            "budget calculator",
+            "painting costs",
+            "waterproofing costs",
+            "mobile number",
+            "pin code",
+            "continue as guest",
+            "logged out",
+            "welcome user",
         }
         if any(term in normalized for term in noisy_terms):
             return False
@@ -1314,6 +1506,32 @@ class CompanyAnalysisService:
         except TypeError:
             rendered = str(payload)
         print(f"\n[company-analysis] {stage}\n{rendered}\n")
+
+    @staticmethod
+    def _llm_provider() -> str:
+        return os.getenv("LLM_PROVIDER", "groq").strip().lower() or "groq"
+
+    @staticmethod
+    def _call_llm_chat(messages: List[Dict[str, str]], temperature: float) -> Dict[str, Optional[str]]:
+        provider = CompanyAnalysisService._llm_provider()
+        if provider == "groq":
+            return CompanyAnalysisService._call_groq_chat(messages=messages, temperature=temperature)
+        if provider == "gemini":
+            return CompanyAnalysisService._call_gemini_chat(messages=messages, temperature=temperature)
+        raise ServiceUnavailableException(
+            message="Unsupported LLM provider configured",
+            details={"provider": provider, "supported_providers": ["groq", "gemini"]},
+        )
+
+    @staticmethod
+    def _call_gemini_chat(messages: List[Dict[str, str]], temperature: float) -> Dict[str, Optional[str]]:
+        result = call_gemini_chat(messages=messages, temperature=temperature)
+        CompanyAnalysisService._debug_print("gemini_request", {"model": result.get("model")})
+        return result
+
+    @staticmethod
+    def _extract_chat_content(payload: Dict[str, Any]) -> str:
+        return CallAgentsService._extract_groq_content(payload)
 
     @staticmethod
     def _call_groq_chat(messages: List[Dict[str, str]], temperature: float) -> Dict[str, Optional[str]]:

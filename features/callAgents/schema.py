@@ -30,16 +30,16 @@ class QuestionRequestSchema(BaseModel):
 class RAGProductsRequestSchema(BaseModel):
     """Request schema for RAG products endpoint"""
     question: str
-    project_id: str = "companyproduct"
-    project_key: str = "companyproduct"
+    project_id: str = "product"
+    project_key: str = "product"
     filters: Dict[str, Any] = Field(default_factory=dict)
 
 
 class RAGCaseStudiesRequestSchema(BaseModel):
     """Request schema for RAG case studies endpoint"""
     question: str
-    project_id: str = "casestudies"
-    project_key: str = "casestudies"
+    project_id: str = "casestudy"
+    project_key: str = "casestudy"
     filters: Dict[str, Any] = Field(default_factory=dict)
 
 

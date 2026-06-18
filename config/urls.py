@@ -1,5 +1,4 @@
 from django.urls import path
-from django.views.generic import TemplateView
 from ninja import NinjaAPI
 from common.exception.global_exception import register_exception_handlers
 from . import views
@@ -38,7 +37,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
-    path('', TemplateView.as_view(template_name='index.html')),
+    path('', views.index),
     path('api/history', views.history),
     path('api/chat', views.chat),
     path('api/details/<str:name>', views.company_details),

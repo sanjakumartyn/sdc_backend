@@ -71,8 +71,8 @@ class CallAgentsServiceTestCase(TestCase):
         self.assertEqual(calls[2]["url"], "http://127.0.0.1:8001/api/products/find")
         self.assertEqual(calls[2]["json"], {
             "question": "Which products help with AI-enabled equipment monitoring?",
-            "project_id": "companyproduct",
-            "project_key": "companyproduct",
+            "project_id": "product",
+            "project_key": "product",
             "filters": {
                 "tag": "MY_Company_Product",
             },
@@ -214,13 +214,13 @@ class CallAgentsServiceTestCase(TestCase):
                 return FakeResponse({"status": "success"})
 
             if url == "http://127.0.0.1:8001/api/products/find":
-                if json["project_id"] == "companyproduct":
+                if json["project_id"] == "product":
                     return FakeResponse({"products": []})
 
                 self.assertEqual(json, {
                     "question": "Find ESG case studies",
-                    "project_id": "companycasestudies",
-                    "project_key": "companycasestudies",
+                    "project_id": "casestudy",
+                    "project_key": "casestudy",
                     "filters": {
                         "tag": "MY_Company_Case_Studies",
                     },
@@ -288,7 +288,7 @@ class CallAgentsServiceTestCase(TestCase):
                 return FakeResponse({
                     "found": True,
                     "products": [{"productName": "VOCapture Elite", "description": huge_text}],
-                    "source_chunks": [{"text": huge_text, "project_id": "companyproduct"}],
+                    "source_chunks": [{"text": huge_text, "project_id": "product"}],
                 })
 
             raise AssertionError(f"Unexpected URL: {url}")

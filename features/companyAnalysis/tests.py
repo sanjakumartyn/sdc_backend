@@ -229,6 +229,75 @@ def noisy_asian_paints_agent_output():
     }
 
 
+def new_agent_response_sample():
+    return {
+        "account_id": "asian_paints_001",
+        "company_name": "Asian Paints",
+        "status": "completed",
+        "dashboard_ready": True,
+        "signals": [
+            {
+                "signal_id": "403177ef266c1345",
+                "agent": "hiring_signal_agent",
+                "category": "hiring",
+                "signal_type": "role_category_demand",
+                "classification": "opportunity",
+                "title": "Digital Data hiring signal",
+                "description": "LinkedIn Jobs: Clear text. We could not find a match for Asian Paints jobs in United States.",
+                "evidence": "LinkedIn Jobs: Clear text. We could not find a match for Asian Paints jobs in United States.",
+                "source_type": "hiring",
+                "confidence_score": 0.62,
+                "priority_score": 72,
+                "reasoning": "Role category suggests an active capability buildout.",
+                "solution_area": "digital transformation, automation, analytics, cloud, and enterprise software solutions",
+                "recommended_action": "Align relevant solution proof points to the hiring category.",
+                "role_category": "digital_data",
+            },
+            {
+                "signal_id": "70dc40bf6d609674",
+                "agent": "market_signal_agent",
+                "category": "market",
+                "signal_type": "digital_transformation",
+                "classification": "opportunity",
+                "title": "West Asia war, sticky input costs, and intense competition cloud near-term demand",
+                "description": "Sticky input costs and intense competition cloud the near-term demand outlook.",
+                "evidence": "Sticky input costs and intense competition cloud the near-term demand outlook.",
+                "source_type": "public_mentions",
+                "confidence_score": 0.62,
+                "priority_score": 67,
+                "reasoning": "Matched market trigger language relevant to demand creation.",
+                "demand_trigger": "digital",
+                "recommended_action": "Map the trigger to current offerings and confirm timing with the account.",
+            },
+        ],
+        "account_intelligence": {
+            "signals": [],
+            "company_profile": {
+                "company_name": "Asian Paints",
+                "website": "https://www.asianpaints.com",
+                "description": "Exclusive waterproofing solutions, interior wall paint, exterior house painting and paint colours by Asian Paints.",
+                "confidence_score": 0.93,
+                "products": [
+                    {"name": "Featured products"},
+                    {"name": "Interior wall paint"},
+                    {"name": "Exterior wall paint"},
+                    {"name": "Waterproofing Services"},
+                    {"name": "Wood Solutions"},
+                    {"name": "Paint quotation calculator"},
+                    {"name": "COUNTRY"},
+                ],
+                "services": [
+                    {"name": "Waterproofing"},
+                    {"name": "Painting Service"},
+                    {"name": "Mobile number"},
+                    {"name": "PIN Code"},
+                ],
+                "source_urls": ["https://www.asianpaints.com/"],
+            },
+        },
+    }
+
+
 TEST_ENV = {
     "AGENT_MICROSERVICE_BASE_URL": "http://127.0.0.1:8000",
     "AGENT_MICROSERVICE_QUESTION_PATH": "/",
@@ -240,6 +309,7 @@ TEST_ENV = {
     "GROQ_API_URL": "https://api.groq.com/openai/v1/chat/completions",
     "GROQ_MODEL": "llama-3.1-8b-instant",
     "GROQ_FALLBACK_MODEL": "llama-3.1-8b-instant",
+    "LLM_PROVIDER": "groq",
     "COMPANY_ANALYSIS_DEBUG": "false",
 }
 
@@ -289,7 +359,7 @@ class CompanyAnalysisServiceTestCase(TestCase):
             if url == "http://127.0.0.1:8000/":
                 return FakeResponse({"status": "success", "sources": [{"source_type": "news", "status": "ok", "content": huge_text}]})
             if url == "http://127.0.0.1:8001/api/products/find":
-                return FakeResponse({"found": True, "source_chunks": [{"text": huge_text, "project_id": "companyproduct"}]})
+                return FakeResponse({"found": True, "source_chunks": [{"text": huge_text, "project_id": "product"}]})
             if url == "https://api.groq.com/openai/v1/chat/completions":
                 prompt = json["messages"][1]["content"]
                 self.assertLess(len(prompt), 12000)
@@ -510,6 +580,34 @@ class CompanyAnalysisServiceTestCase(TestCase):
         self.assertNotIn("Product catalog", products)
         self.assertNotIn("Select country", products)
 
+    def test_new_agent_response_shape_is_normalized_for_analysis(self):
+        signals = CompanyAnalysisService._extract_agent_signals(new_agent_response_sample())
+        rendered = jsonlib.dumps(signals)
+
+        self.assertEqual(signals[0]["type"], "role_category_demand")
+        self.assertEqual(signals[0]["source_type"], "hiring")
+        self.assertIn("Digital Data hiring signal", signals[0]["title"])
+        self.assertIn("automation", signals[0]["solution_area"])
+        self.assertIn("digital", rendered)
+        self.assertNotIn("could not find a match", rendered.lower())
+        self.assertNotIn("Clear text", rendered)
+
+    def test_new_agent_nested_company_profile_products_are_used(self):
+        payload = new_agent_response_sample()
+        payload.pop("company_profile", None)
+
+        products = CompanyAnalysisService._extract_client_products(payload)
+
+        self.assertIn("Interior wall paint", products)
+        self.assertIn("Exterior wall paint", products)
+        self.assertIn("Waterproofing Services", products)
+        self.assertIn("Wood Solutions", products)
+        self.assertIn("Painting Service", products)
+        self.assertNotIn("Featured products", products)
+        self.assertNotIn("Paint quotation calculator", products)
+        self.assertNotIn("Mobile number", products)
+        self.assertNotIn("PIN Code", products)
+
     def test_case_study_only_products_are_not_returned_as_solutions(self):
         context = huhtamaki_context()
         context["product_matches"] = [{"productName": "ESG Vision Audit", "category": "ESG Solutions"}]
@@ -685,7 +783,7 @@ class CompanyAnalysisServiceTestCase(TestCase):
                 return FakeResponse({"status": "success"})
             if url == "http://127.0.0.1:8001/api/products/find":
                 rag_questions.append(json["question"])
-                if json["project_id"] == "companycasestudies":
+                if json["project_id"] == "casestudy":
                     return FakeResponse({
                         "found": True,
                         "caseStudies": [{"title": "Paint plant VOC win", "productsUsed": ["VOCapture Elite"]}],
@@ -736,6 +834,33 @@ class CompanyAnalysisServiceTestCase(TestCase):
         result = CompanyAnalysisService._call_groq_chat(messages=[{"role": "user", "content": "hello"}], temperature=0.2)
 
         self.assertEqual(result["model"], "llama-3.1-8b-instant")
+        self.assertEqual(result["content"], "ok")
+
+    @patch.dict(
+        "os.environ",
+        {
+            **TEST_ENV,
+            "LLM_PROVIDER": "gemini",
+            "GEMINI_API_KEY": "test-key",
+            "GEMINI_MODEL": "gemini-2.5-flash",
+        },
+        clear=False,
+    )
+    @patch("common.utils.gemini.requests.post")
+    def test_llm_provider_gemini_uses_gemini_generate_content_endpoint(self, mock_post):
+        def side_effect(url, json=None, headers=None, timeout=None, files=None):
+            self.assertEqual(url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent")
+            self.assertEqual(headers["x-goog-api-key"], "test-key")
+            self.assertEqual(json["generationConfig"]["temperature"], 0.2)
+            self.assertEqual(json["contents"][0]["parts"][0]["text"], "hello")
+            return FakeResponse({"candidates": [{"content": {"parts": [{"text": "ok"}]}}]})
+
+        mock_post.side_effect = side_effect
+
+        result = CompanyAnalysisService._call_llm_chat(messages=[{"role": "user", "content": "hello"}], temperature=0.2)
+
+        self.assertEqual(result["provider"], "gemini")
+        self.assertEqual(result["model"], "gemini-2.5-flash")
         self.assertEqual(result["content"], "ok")
 
     @patch.dict(

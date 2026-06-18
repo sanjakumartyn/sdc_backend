@@ -1,6 +1,14 @@
 from django.http import JsonResponse
+from django.shortcuts import redirect, render
+from django.template import TemplateDoesNotExist
 import json
 from django.views.decorators.csrf import csrf_exempt
+
+def index(request):
+    try:
+        return render(request, "index.html")
+    except TemplateDoesNotExist:
+        return redirect("/api/docs")
 
 def dashboard_summary(request):
     data = {

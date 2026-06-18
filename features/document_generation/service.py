@@ -21,8 +21,9 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-from features.companydata.service import CompanyDataService
+from common.utils.gemini import call_gemini_chat
 from features.companyAnalysis.service import CompanyAnalysisService
+from features.companydata.service import CompanyDataService
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +136,7 @@ class DocumentGenerationService:
 
     @staticmethod
     def _synthesize_document_content(company: str, document_type: str, context: Dict[str, Any]) -> Dict[str, str]:
-        """Sends context to Mistral AI (or Groq) to synthesize detailed, clean sections in Markdown."""
+        """Sends context to Gemini (or Groq) to synthesize detailed, clean sections in Markdown."""
         # 1. Define required keys based on documentType
         sections_map = {
             "proposal": [
@@ -271,36 +272,23 @@ class DocumentGenerationService:
 
     @staticmethod
     def _call_llm(system_prompt: str, user_message: str) -> str:
-        """Helper to invoke Mistral AI with a fallback to Groq completions."""
-        # A. Try Mistral
-        mistral_api_key = os.getenv("MISTRAL_API_KEY", "").strip()
-        if mistral_api_key:
-            mistral_url = os.getenv("MISTRAL_API_URL", "https://api.mistral.ai/v1/chat/completions").strip()
-            mistral_model = os.getenv("MISTRAL_MODEL", "mistral-large-latest").strip()
-            headers = {
-                "Authorization": f"Bearer {mistral_api_key}",
-                "Content-Type": "application/json"
-            }
-            body = {
-                "model": mistral_model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message}
-                ],
-                "temperature": 0.2
-            }
+        """Helper to invoke Gemini with a fallback to Groq completions."""
+        if os.getenv("GEMINI_API_KEY", "").strip():
             try:
-                response = requests.post(mistral_url, headers=headers, json=body, timeout=45)
-                response.raise_for_status()
-                choices = response.json().get("choices", [])
-                if choices:
-                    content = choices[0].get("message", {}).get("content", "").strip()
-                    if content:
-                        return content
+                result = call_gemini_chat(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message}
+                    ],
+                    temperature=0.2,
+                    timeout=float(os.getenv("GEMINI_TIMEOUT", "45")),
+                )
+                content = (result.get("content") or "").strip()
+                if content:
+                    return content
             except Exception as e:
-                logger.warning(f"Mistral document synthesis failed: {e}. Retrying with Groq...")
+                logger.warning(f"Gemini document synthesis failed: {e}. Retrying with Groq...")
 
-        # B. Fallback to Groq
         groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
         if groq_api_key:
             groq_url = os.getenv("GROQ_API_URL", "https://api.groq.com/openai/v1/chat/completions").strip()
