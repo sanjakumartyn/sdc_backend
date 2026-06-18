@@ -1,4 +1,5 @@
 import os
+import time
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -83,31 +84,49 @@ def call_gemini_chat(
     url = get_gemini_url(model)
     response = None
 
-    try:
-        response = requests.post(
-            url,
-            headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
-            json=build_gemini_payload(messages, temperature),
-            timeout=request_timeout,
-        )
-        response.raise_for_status()
-    except requests.HTTPError as exc:
-        status_code = getattr(getattr(exc, "response", None), "status_code", None) or getattr(response, "status_code", None)
-        if status_code == 404:
-            error = "gemini_model_not_found"
-        elif status_code == 413:
-            error = "gemini_payload_too_large"
-        else:
-            error = str(exc)
-        raise ServiceUnavailableException(
-            message="Unable to reach Gemini",
-            details={"provider": "gemini", "model": model, "error": error},
-        ) from exc
-    except requests.RequestException as exc:
-        raise ServiceUnavailableException(
-            message="Unable to reach Gemini",
-            details={"provider": "gemini", "model": model, "error": str(exc)},
-        ) from exc
+    max_retries = 3
+    retry_delay = 2.0  # seconds
+
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(
+                url,
+                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                json=build_gemini_payload(messages, temperature),
+                timeout=request_timeout,
+            )
+            response.raise_for_status()
+            # Request succeeded, break the retry loop
+            break
+        except requests.HTTPError as exc:
+            status_code = getattr(getattr(exc, "response", None), "status_code", None) or getattr(response, "status_code", None)
+            is_retryable = status_code in (429, 500, 502, 503, 504)
+            if attempt == max_retries - 1 or not is_retryable:
+                if status_code == 404:
+                    error = "gemini_model_not_found"
+                elif status_code == 413:
+                    error = "gemini_payload_too_large"
+                else:
+                    error = str(exc)
+                raise ServiceUnavailableException(
+                    message="Unable to reach Gemini",
+                    details={"provider": "gemini", "model": model, "error": error},
+                ) from exc
+            time.sleep(retry_delay)
+            retry_delay *= 2.0
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            if attempt == max_retries - 1:
+                raise ServiceUnavailableException(
+                    message="Unable to reach Gemini",
+                    details={"provider": "gemini", "model": model, "error": str(exc)},
+                ) from exc
+            time.sleep(retry_delay)
+            retry_delay *= 2.0
+        except requests.RequestException as exc:
+            raise ServiceUnavailableException(
+                message="Unable to reach Gemini",
+                details={"provider": "gemini", "model": model, "error": str(exc)},
+            ) from exc
 
     try:
         payload = response.json()

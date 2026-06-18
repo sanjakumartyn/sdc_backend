@@ -879,3 +879,52 @@ class CompanyAnalysisServiceTestCase(TestCase):
 
         with self.assertRaises(GroqModelNotFoundException):
             CompanyAnalysisService._call_groq_chat(messages=[{"role": "user", "content": "hello"}], temperature=0.2)
+
+    @patch("common.utils.gemini.time.sleep")
+    @patch("common.utils.gemini.requests.post")
+    def test_call_gemini_chat_retries_on_timeout_and_succeeds(self, mock_post, mock_sleep):
+        with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}):
+            mock_post.side_effect = [
+                requests.exceptions.Timeout("Read timed out"),
+                FakeResponse({"candidates": [{"content": {"parts": [{"text": "success-after-retry"}]}}]})
+            ]
+
+            from common.utils.gemini import call_gemini_chat
+            result = call_gemini_chat(messages=[{"role": "user", "content": "hello"}], temperature=0.2)
+
+            self.assertEqual(result["content"], "success-after-retry")
+            self.assertEqual(mock_post.call_count, 2)
+            self.assertEqual(mock_sleep.call_count, 1)
+
+    @patch("common.utils.gemini.time.sleep")
+    @patch("common.utils.gemini.requests.post")
+    def test_call_gemini_chat_raises_after_max_retries(self, mock_post, mock_sleep):
+        with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}):
+            mock_post.side_effect = requests.exceptions.Timeout("Read timed out")
+
+            from common.utils.gemini import call_gemini_chat
+            from common.exception.base_exception import ServiceUnavailableException
+
+            with self.assertRaises(ServiceUnavailableException) as ctx:
+                call_gemini_chat(messages=[{"role": "user", "content": "hello"}], temperature=0.2)
+
+            self.assertIn("Unable to reach Gemini", str(ctx.exception))
+            self.assertEqual(mock_post.call_count, 3)
+            self.assertEqual(mock_sleep.call_count, 2)
+
+    @patch("common.utils.gemini.time.sleep")
+    @patch("common.utils.gemini.requests.post")
+    def test_call_gemini_chat_retries_on_retryable_http_error(self, mock_post, mock_sleep):
+        with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}):
+            mock_post.side_effect = [
+                FakeResponse(status_code=503),
+                FakeResponse({"candidates": [{"content": {"parts": [{"text": "success-after-503"}]}}]})
+            ]
+
+            from common.utils.gemini import call_gemini_chat
+            result = call_gemini_chat(messages=[{"role": "user", "content": "hello"}], temperature=0.2)
+
+            self.assertEqual(result["content"], "success-after-503")
+            self.assertEqual(mock_post.call_count, 2)
+            self.assertEqual(mock_sleep.call_count, 1)
+
