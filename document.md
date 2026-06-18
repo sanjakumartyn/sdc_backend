@@ -79,7 +79,7 @@ Here is the step-by-step chronology of what happens backend-side when a salesper
 
 ### Step 7: Matching Products & Case Studies (Vector RAG)
 * **Action:** The backend queries two vector RAG services:
-  * **Product RAG:** Returns top-relevant NovaChem products matching the generated question.
+  * **Product RAG:** Returns top-relevant GrowthlensAI products matching the generated question.
   * **Case-Study RAG:** Returns past successful case studies of similar clients.
 * **Why:** Vector search finds products by *semantic meaning* (concepts) rather than exact keyword matches, identifying relevant solutions even if the names differ.
 

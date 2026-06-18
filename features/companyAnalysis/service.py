@@ -172,7 +172,7 @@ class CompanyAnalysisService:
     @staticmethod
     def _dashboard_system_prompt() -> str:
         return (
-            "You are a senior enterprise sales intelligence analyst for NovaChem. Return strict JSON only. "
+            "You are a senior enterprise sales intelligence analyst for GrowthlensAI. Return strict JSON only. "
             "Never invent facts, metrics, percentages, company goals, acquisitions, expansion plans, "
             "sustainability targets, or business initiatives. Every recommendation, prediction, score, and "
             "conclusion must be supported by evidence from the supplied context. Distinguish verified evidence "
@@ -182,7 +182,7 @@ class CompanyAnalysisService:
             "industry alignment 30%, sustainability alignment 25%, operational need alignment 25%, and digital "
             "transformation alignment 20%. Confidence scale: 90-100 multiple verified sources, 70-89 strong "
             "evidence, 50-69 partial evidence, 1-49 weak inference, 0 no evidence. Only predict AI needs when "
-            "supported by evidence. Only recommend NovaChem solutions when there is a clear connection between "
+            "supported by evidence. Only recommend GrowthlensAI solutions when there is a clear connection between "
             "company challenge or objective and product capability. solution_mapping may only use products in "
             "product_matches. Set deal_value to null unless CRM/opportunity evidence explicitly contains a deal "
             "value; product catalog price is not a deal value. Return exactly this shape: "
@@ -253,7 +253,7 @@ class CompanyAnalysisService:
                 {
                     "role": "system",
                     "content": (
-                        "You are an AI deal coach for NovaChem Solutions. Answer the sales user's "
+                        "You are an AI deal coach for GrowthlensAI. Answer the sales user's "
                         "message using only the provided company, product, case study, CRM, OCR, and "
                         "agent evidence. Be practical, concise, and context-aware."
                     ),
@@ -278,7 +278,7 @@ class CompanyAnalysisService:
                 {
                     "role": "system",
                     "content": (
-                        "You are an AI deal coach for NovaChem Solutions. Answer the sales user's "
+                        "You are an AI deal coach for GrowthlensAI. Answer the sales user's "
                         "message using only the provided company, product, case study, CRM, OCR, and "
                         "agent evidence. Be practical, concise, and context-aware."
                     ),
@@ -908,12 +908,12 @@ class CompanyAnalysisService:
     def _build_rag_question(company_name: str, question: str) -> str:
         if question:
             return f"{question} for {company_name}"
-        return f"Find NovaChem products and case studies relevant to {company_name}"
+        return f"Find GrowthlensAI products and case studies relevant to {company_name}"
 
     @staticmethod
     def _build_case_study_rag_question(company_name: str, question: str, agent_upstream: Dict[str, Any]) -> str:
         signal_text = CompanyAnalysisService._signal_search_text(agent_upstream)
-        base_question = f"{question} for {company_name}" if question else f"Find NovaChem case studies relevant to {company_name}"
+        base_question = f"{question} for {company_name}" if question else f"Find GrowthlensAI case studies relevant to {company_name}"
         parts = [f"{base_question}.", "Find case studies with the same client, industry, business challenges, or sustainability/manufacturing signals."]
         if signal_text:
             parts.append(f"Company signals: {signal_text}.")
@@ -924,10 +924,10 @@ class CompanyAnalysisService:
         signal_text = CompanyAnalysisService._signal_search_text(agent_upstream)
         case_study_products = CompanyAnalysisService._case_study_product_terms(case_study_rag)
         client_products = CompanyAnalysisService._extract_client_products(agent_upstream)
-        base_question = f"{question} for {company_name}" if question else f"Find NovaChem products relevant to {company_name}"
+        base_question = f"{question} for {company_name}" if question else f"Find GrowthlensAI products relevant to {company_name}"
         parts = [
             f"{base_question}.",
-            "Find NovaChem products that match explicit company needs, industry, sustainability signals, or matched case-study products.",
+            "Find GrowthlensAI products that match explicit company needs, industry, sustainability signals, or matched case-study products.",
             "Avoid generic utilities or water-treatment products unless water, utilities, wastewater, or monitoring evidence is present.",
         ]
         if signal_text:

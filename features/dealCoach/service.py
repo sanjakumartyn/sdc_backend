@@ -18,12 +18,12 @@ class DealCoachService:
             context_str = context_str[:15000] + "\n... (context truncated)"
 
         system_prompt = (
-            "You are an AI deal coach for NovaChem Solutions. Your goal is to guide the sales team "
+            "You are an AI deal coach for GrowthlensAI. Your goal is to guide the sales team "
             "with practical, actionable advice, objection handling, pricing tactics, and deal strategy.\n\n"
             "Here is the context data about the company they are targeting:\n"
             f"{context_str}\n\n"
             "Be business-focused, concise, and helpful. Frame your answers around the company's specific needs, "
-            "objections, and NovaChem's matching solutions."
+            "objections, and GrowthlensAI's matching solutions."
         )
 
         try:
