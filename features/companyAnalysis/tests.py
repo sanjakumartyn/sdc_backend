@@ -827,7 +827,7 @@ class CompanyAnalysisServiceTestCase(TestCase):
         self.assertEqual(len(rag_questions), 2)
         self.assertIn("Find case studies", rag_questions[0])
         self.assertIn("Which products or case studies are relevant? for Asian Paints", rag_questions[0])
-        self.assertIn("Find NovaChem products", rag_questions[1])
+        self.assertIn("Find GrowthlensAI products", rag_questions[1])
         self.assertIn("Matched case-study products to prioritize: VOCapture Elite", rag_questions[1])
 
     @patch.dict(

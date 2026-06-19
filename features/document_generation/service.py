@@ -196,7 +196,7 @@ class DocumentGenerationService:
             context_str = context_str[:15000] + "\n... (context truncated)"
             
         system_prompt = (
-            "You are an expert enterprise sales copilot for NovaChem Solutions.\n"
+            "You are an expert enterprise sales copilot for GrowthlensAI.\n"
             "Your task is to generate the textual content for a highly professional business document.\n"
             "You MUST structure your output in clean Markdown using Level 1 headings (# Heading Name) for EACH of the following sections:\n"
             + "\n".join([f"# {key}" for key in required_keys]) + "\n\n"
@@ -204,7 +204,7 @@ class DocumentGenerationService:
             "1. Output markdown headings exactly matching the names listed above.\n"
             "2. Under each heading, write detailed, multi-paragraph, professional enterprise content. Do not use generic placeholders or incomplete templates.\n"
             "3. Ground all findings, estimates, and product details in the provided context. Incorporate details from CRM history, RAG matches, meeting pain points, and OCR documents if present.\n"
-            "4. If certain details are missing, construct highly plausible, professional industry-specific recommendations for NovaChem products.\n"
+            "4. If certain details are missing, construct highly plausible, professional industry-specific recommendations for GrowthlensAI products.\n"
         )
         
         user_message = (
@@ -250,13 +250,13 @@ class DocumentGenerationService:
                     else:
                         final_sections[key] = (
                             f"Detailed analysis and recommendations regarding {key.lower()} for {company} "
-                            "based on sales CRM records and NovaChem solutions catalog."
+                            "based on sales CRM records and GrowthlensAI solutions catalog."
                         )
             
             # Verify if we got at least one actual parsed section with substantial content.
             # If everything was completely empty or failed to parse, fall back.
             total_content_len = sum(len(v) for v in final_sections.values())
-            fallback_count = sum(1 for v in final_sections.values() if "based on sales CRM records and NovaChem solutions catalog." in v)
+            fallback_count = sum(1 for v in final_sections.values() if "based on sales CRM records and GrowthlensAI solutions catalog." in v)
             
             if fallback_count == len(required_keys) or total_content_len < 100:
                 raise ValueError("Parsed content is empty or contains only fallback text.")
@@ -267,7 +267,7 @@ class DocumentGenerationService:
             # Safe fallback text-based dictionary
             fallback = {}
             for key in required_keys:
-                fallback[key] = f"Detailed analysis and recommendations regarding {key.lower()} for {company} based on sales CRM records and NovaChem solutions catalog."
+                fallback[key] = f"Detailed analysis and recommendations regarding {key.lower()} for {company} based on sales CRM records and GrowthlensAI solutions catalog."
             return fallback
 
     @staticmethod
