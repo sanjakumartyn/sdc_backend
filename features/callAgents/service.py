@@ -150,7 +150,7 @@ class CallAgentsService:
             "project_id": os.getenv("PRODUCT_RAG_PROJECT_ID", "product"),
             "project_key": os.getenv("PRODUCT_RAG_PROJECT_KEY", "product"),
             "filters": {
-                "tag": os.getenv("PRODUCT_RAG_FILTER_TAG", "MY_Company_Product"),
+                "tag": os.getenv("PRODUCT_RAG_FILTER_TAG", "MY_Company_product_Studies"),
             },
         }
         if os.getenv("COMPANY_ANALYSIS_DEBUG", "false").strip().lower() in {"1", "true", "yes", "on"}:
@@ -205,7 +205,7 @@ class CallAgentsService:
             "project_id": os.getenv("CASE_STUDY_RAG_PROJECT_ID", "casestudy"),
             "project_key": os.getenv("CASE_STUDY_RAG_PROJECT_KEY", "casestudy"),
             "filters": {
-                "tag": os.getenv("CASE_STUDY_RAG_FILTER_TAG", "MY_Company_Case_Studies"),
+                "tag": os.getenv("CASE_STUDY_RAG_FILTER_TAG", "MY_Company_product_Studies"),
             },
         }
         print(

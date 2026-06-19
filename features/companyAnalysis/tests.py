@@ -637,6 +637,28 @@ class CompanyAnalysisServiceTestCase(TestCase):
         self.assertEqual(mappings[0]["novachem_solution"], "HydroSafe Monitor")
         self.assertEqual(mappings[0]["deal_value"], None)
 
+    def test_case_study_products_create_fallback_mapping_when_product_rag_is_empty(self):
+        context = huhtamaki_context()
+        context["agent_signals"] = [
+            {"type": "operations", "title": "Predictive safety monitoring", "summary": "Manufacturing safety analytics is a priority."}
+        ]
+        context["product_matches"] = []
+        context["case_study_matches"] = [
+            {
+                "title": "Advanced Safety Analytics for Manufacturing Plants",
+                "challenge": "Limited predictive safety monitoring capabilities.",
+                "solution": "Installed SafeVision AI monitoring systems.",
+                "productsUsed": ["SafeVision AI", "SafeGuard Industrial Shield"],
+            }
+        ]
+
+        mappings = CompanyAnalysisService._normalize_solution_mapping([], context)
+
+        self.assertEqual([item["novachem_solution"] for item in mappings], ["SafeVision AI", "SafeGuard Industrial Shield"])
+        self.assertEqual(mappings[0]["match_percent"], 90)
+        self.assertEqual(mappings[0]["evidence"][0]["source"], "case_study_rag")
+        self.assertIn("Case-study evidence", mappings[0]["reason"])
+
     def test_water_products_are_excluded_without_water_evidence(self):
         context = huhtamaki_context()
         context["agent_signals"] = [{"type": "sustainability", "title": "Packaging growth", "summary": "Sustainable packaging expansion."}]

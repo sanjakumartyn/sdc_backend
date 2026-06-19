@@ -74,7 +74,7 @@ class CallAgentsServiceTestCase(TestCase):
             "project_id": "product",
             "project_key": "product",
             "filters": {
-                "tag": "MY_Company_Product",
+                "tag": "MY_Company_product_Studies",
             },
         })
         self.assertEqual(calls[3]["url"], "https://api.groq.com/openai/v1/chat/completions")
@@ -222,7 +222,7 @@ class CallAgentsServiceTestCase(TestCase):
                     "project_id": "casestudy",
                     "project_key": "casestudy",
                     "filters": {
-                        "tag": "MY_Company_Case_Studies",
+                        "tag": "MY_Company_product_Studies",
                     },
                 })
                 return FakeResponse({

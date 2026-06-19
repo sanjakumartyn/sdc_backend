@@ -16,10 +16,11 @@ Content-Type: application/json
 POST http://127.0.0.1:8000/api/company-analysis
 Content-Type: application/json
 
+
 {
-  "account_id": "AsianPaints_001",
-  "company_name": "Asian Paints",
-  "website_url": "https://www.asianpaints.com",
+  "account_id": "Nes_001",
+  "company_name": "Larsen & Toubro",
+  "website_url": "https://www.larsentoubro.com",
   "question": "Create full company analysis dashboard",
   "documents": []
 }

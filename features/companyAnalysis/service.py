@@ -647,7 +647,8 @@ class CompanyAnalysisService:
         solution = CompanyAnalysisService._product_display_name(product)
         product_summary = CompanyAnalysisService._truncate_text(product.get("description") or product.get("application") or product.get("category")).rstrip(".")
         if solution and product_summary:
-            evidence.append({"source": "product_rag", "finding": f"{solution}: {product_summary}"})
+            source = "case_study_rag" if product.get("_source") == "case_study_rag" else "product_rag"
+            evidence.append({"source": source, "finding": f"{solution}: {product_summary}"})
         for title in CompanyAnalysisService._case_study_titles_for_product(solution, context):
             evidence.append({"source": "case_study_rag", "finding": f"{title} references {solution}"})
         signal = CompanyAnalysisService._first_evidence_summary(context.get("agent_signals"))
@@ -709,6 +710,16 @@ class CompanyAnalysisService:
                 CompanyAnalysisService._product_display_name(product),
             )
         )
+        product_names = {
+            CompanyAnalysisService._normalize_lookup_key(CompanyAnalysisService._product_display_name(product))
+            for product in products
+        }
+        products.extend(
+            product
+            for product in CompanyAnalysisService._case_study_product_references(context)
+            if CompanyAnalysisService._normalize_lookup_key(CompanyAnalysisService._product_display_name(product))
+            not in product_names
+        )
 
         for product in products:
             if len(mappings) >= CompanyAnalysisService.MAX_MATCHES:
@@ -728,6 +739,38 @@ class CompanyAnalysisService:
                 "evidence": CompanyAnalysisService._mapping_evidence(product, context),
             })
         return mappings
+
+    @staticmethod
+    def _case_study_product_references(context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        products = []
+        seen = set()
+        for case_study in context.get("case_study_matches") or []:
+            if not isinstance(case_study, dict) or case_study.get("error") or case_study.get("skipped"):
+                continue
+            title = CompanyAnalysisService._truncate_text(case_study.get("title"))
+            description = CompanyAnalysisService._truncate_text(
+                case_study.get("solution") or case_study.get("challenge") or case_study.get("results")
+            )
+            requirement = CompanyAnalysisService._truncate_text(
+                case_study.get("challenge") or case_study.get("industry") or description
+            )
+            for raw_product in case_study.get("productsUsed") or []:
+                product_name = CompanyAnalysisService._truncate_text(raw_product)
+                normalized = CompanyAnalysisService._normalize_lookup_key(product_name)
+                if not normalized or normalized in seen:
+                    continue
+                seen.add(normalized)
+                products.append({
+                    "productName": product_name,
+                    "category": requirement or "Case-study referenced solution",
+                    "description": description,
+                    "application": requirement,
+                    "_source": "case_study_rag",
+                    "_case_study_title": title,
+                })
+                if len(products) >= CompanyAnalysisService.MAX_MATCHES:
+                    return products
+        return products
 
     @staticmethod
     def _product_allowed_by_company_evidence(product: Dict[str, Any], context: Dict[str, Any]) -> bool:
@@ -812,6 +855,12 @@ class CompanyAnalysisService:
         solution = CompanyAnalysisService._product_display_name(product)
         product_summary = CompanyAnalysisService._truncate_text(product.get("description") or product.get("application") or product.get("category")).rstrip(".")
         case_study_titles = CompanyAnalysisService._case_study_titles_for_product(solution, context)
+        if product.get("_source") == "case_study_rag":
+            if case_study_titles and product_summary:
+                return f"Case-study evidence references {solution}: {product_summary}. Matched case study: {case_study_titles[0]}."
+            if case_study_titles:
+                return f"Case-study evidence references {solution}: {case_study_titles[0]}."
+            return "Matched from case-study product evidence."
         if case_study_titles and product_summary:
             return f"Retrieved product match: {product_summary}. Prioritized by case-study evidence: {case_study_titles[0]}."
         if case_study_titles:
@@ -1517,11 +1566,28 @@ class CompanyAnalysisService:
         if provider == "groq":
             return CompanyAnalysisService._call_groq_chat(messages=messages, temperature=temperature)
         if provider == "gemini":
-            return CompanyAnalysisService._call_gemini_chat(messages=messages, temperature=temperature)
+            try:
+                return CompanyAnalysisService._call_gemini_chat(messages=messages, temperature=temperature)
+            except ServiceUnavailableException as exc:
+                if not CompanyAnalysisService._gemini_fallback_to_groq_enabled():
+                    raise
+                if not os.getenv("GROQ_API_KEY", "").strip():
+                    raise
+                CompanyAnalysisService._debug_print(
+                    "gemini_fallback_to_groq",
+                    {"gemini_error": getattr(exc, "details", {})},
+                )
+                result = CompanyAnalysisService._call_groq_chat(messages=messages, temperature=temperature)
+                result["fallback_from"] = "gemini"
+                return result
         raise ServiceUnavailableException(
             message="Unsupported LLM provider configured",
             details={"provider": provider, "supported_providers": ["groq", "gemini"]},
         )
+
+    @staticmethod
+    def _gemini_fallback_to_groq_enabled() -> bool:
+        return os.getenv("GEMINI_FALLBACK_TO_GROQ", "true").strip().lower() in {"1", "true", "yes", "on"}
 
     @staticmethod
     def _call_gemini_chat(messages: List[Dict[str, str]], temperature: float) -> Dict[str, Optional[str]]:

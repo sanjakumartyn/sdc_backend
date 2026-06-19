@@ -374,7 +374,7 @@ Processing steps:
 6. Send `account_id`, `company_name`, and `website_url` to the agent microservice.
 7. Ask Groq to generate search keywords and a product RAG question from the company, documents, user question, agent response, OCR extraction, and company data.
 8. Send the generated product question to the product RAG microservice with configured project and filter values.
-9. Send the generated product question to the case-study RAG microservice with the `casestudy` project and `MY_Company_Case_Studies` filter tag.
+9. Send the generated product question to the case-study RAG microservice with the `casestudy` project and `MY_Company_product_Studies` filter tag.
 10. Treat the OCR microservice as required when a file is uploaded.
 11. Treat the company-data lookup as optional; if it fails, include `company_data_unavailable` in the internal Groq context.
 12. Treat the agent microservice as required.
