@@ -1,5 +1,6 @@
 from typing import List, Optional, Tuple
 from django.db.models import QuerySet
+from django.core.exceptions import ValidationError
 from features.signals.models import Signal
 from common.exception.base_exception import NotFoundException
 
@@ -14,7 +15,7 @@ class SignalRepository:
         """Retrieves a single Signal by ID, raising a NotFoundException if missing."""
         try:
             return Signal.objects.get(pk=signal_id)
-        except Signal.DoesNotExist:
+        except (Signal.DoesNotExist, ValidationError):
             raise NotFoundException(f"Signal with ID {signal_id} not found")
 
     @staticmethod

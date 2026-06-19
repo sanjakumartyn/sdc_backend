@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import requests
 
-from common.exception.base_exception import BadRequestException, ServiceUnavailableException
+from common.exception.base_exception import BadRequestException, ServiceUnavailableException, GroqApiKeyMissingException
 from features.companydata.service import CompanyDataService
 
 
@@ -40,6 +40,10 @@ class CallAgentsService:
             website_url=website_url,
         )
 
+        company_data = CompanyDataService.get_all_data(
+            limit_per_collection=int(os.getenv("COMPANY_ANALYSIS_DATA_LIMIT_PER_COLLECTION", "10"))
+        )
+
         keyword_generation = CallAgentsService._generate_keywords(
             company_name=company_name,
             documents=documents,
@@ -62,12 +66,35 @@ class CallAgentsService:
             product_question=product_question,
         )
 
-        synthesis = CallAgentsService._synthesize_answer(
-            company, agent_upstream, rag_upstream, ocr_extractions, company_data
-        )
+        try:
+            synthesis = CallAgentsService._synthesize_answer(
+                company=company_name,
+                user_question=user_question,
+                agent_upstream=agent_upstream,
+                product_rag_upstream=product_rag_upstream,
+                case_study_rag_upstream=case_study_rag_upstream,
+                keywords=keywords,
+                product_question=product_question,
+                ocr_extractions=ocr_extractions,
+                rag_products=rag_products,
+                rag_casestudies=rag_casestudies,
+                company_data=company_data,
+            )
+        except ServiceUnavailableException as exc:
+            synthesis = {
+                "provider": "groq",
+                "model": os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip(),
+                "answer": None,
+                "error": exc.details.get("error") if exc.details else exc.message,
+            }
+
+        rag_upstream = {
+            "products": product_rag_upstream,
+            "caseStudies": case_study_rag_upstream,
+        }
 
         return {
-            "company": company,
+            "company": company_name,
             "documents": documents,
             "upstream": {
                 "agent": agent_upstream,
@@ -605,6 +632,7 @@ If data is missing, make reasonable inferences based on the company's industry o
         ocr_extractions: List[Dict[str, Any]],
         rag_products: Dict[str, Any],
         rag_casestudies: Dict[str, Any],
+        company_data: Dict[str, Any],
     ) -> Dict[str, Optional[str]]:
         groq_model = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip()
 
@@ -612,15 +640,17 @@ If data is missing, make reasonable inferences based on the company's industry o
             raise GroqApiKeyMissingException()
 
         prompt = CallAgentsService._build_synthesis_prompt(
-            company,
-            user_question,
-            agent_upstream,
-            product_rag_upstream,
-            case_study_rag_upstream,
-            keywords,
-            product_question,
-            ocr_extractions,
-            company_data,
+            company=company,
+            user_question=user_question,
+            agent_upstream=agent_upstream,
+            product_rag_upstream=product_rag_upstream,
+            case_study_rag_upstream=case_study_rag_upstream,
+            keywords=keywords,
+            product_question=product_question,
+            ocr_extractions=ocr_extractions,
+            rag_products=rag_products,
+            rag_casestudies=rag_casestudies,
+            company_data=company_data,
         )
         result = CallAgentsService._call_groq_chat(
             messages=[
@@ -672,39 +702,12 @@ If data is missing, make reasonable inferences based on the company's industry o
         groq_timeout = float(os.getenv("GROQ_TIMEOUT", "30"))
 
         if not groq_api_key:
-            # Compute dynamic fallback from upstream data instead of static mock
-            fallback = CallAgentsService._compute_fallback_analysis(
-                company, agent_upstream, rag_upstream, ocr_extractions, rag_products, rag_casestudies
-            )
             return {
                 "provider": "groq",
                 "model": groq_model,
-                "answer": None,
+                "content": None,
                 "error": "groq_api_key_missing",
             }
-
-        prompt = CallAgentsService._build_synthesis_prompt(
-            company,
-            agent_upstream,
-            rag_upstream,
-            ocr_extractions,
-            company_data,
-        )
-        request_body = {
-            "model": groq_model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a sales intelligence assistant. Use the provided agent and RAG "
-                        "results to produce a direct, helpful answer for the user. If the inputs "
-                        "conflict, prefer the most specific and recent evidence."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            "temperature": 0.2,
-        }
 
         try:
             response = requests.post(
@@ -760,6 +763,7 @@ If data is missing, make reasonable inferences based on the company's industry o
         ocr_extractions: List[Dict[str, Any]],
         rag_products: Dict[str, Any],
         rag_casestudies: Dict[str, Any],
+        company_data: Dict[str, Any],
     ) -> str:
         evidence_payload = CallAgentsService._build_compact_synthesis_context(
             company=company,
@@ -795,6 +799,10 @@ If data is missing, make reasonable inferences based on the company's industry o
         ocr_extractions: List[Dict[str, Any]],
         company_data: Dict[str, Any],
     ) -> Dict[str, Any]:
+        rag_upstream = {
+            "products": product_rag_upstream,
+            "caseStudies": case_study_rag_upstream,
+        }
         combined_payload = {
             "company": company,
             "agent": agent_upstream,

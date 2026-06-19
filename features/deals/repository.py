@@ -1,5 +1,6 @@
 from typing import List, Optional, Tuple
 from django.db.models import QuerySet
+from django.core.exceptions import ValidationError
 from features.deals.models import Deal
 from common.exception.base_exception import NotFoundException
 
@@ -14,7 +15,7 @@ class DealRepository:
         """Retrieves a single Deal by ID, raising a NotFoundException if missing."""
         try:
             return Deal.objects.get(pk=deal_id)
-        except Deal.DoesNotExist:
+        except (Deal.DoesNotExist, ValidationError):
             raise NotFoundException(f"Deal with ID {deal_id} not found")
 
     @staticmethod
