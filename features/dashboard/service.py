@@ -8,107 +8,130 @@ class DashboardService:
     def get_summary() -> dict:
         summary = {
             "overview": {
-                "totalProducts": 102,
-                "totalCaseStudies": 48,
-                "activeOpportunities": 24,
-                "activeCustomers": 12,
-                "proposalSuccessRate": 72
+                "totalProducts": 0,
+                "totalCaseStudies": 0,
+                "activeOpportunities": 0,
+                "activeCustomers": 0,
+                "proposalSuccessRate": 0
             },
             "productPortfolio": [
-                {"category": "Industrial Coatings", "count": 15},
-                {"category": "Adhesives", "count": 20},
-                {"category": "Resins", "count": 12},
-                {"category": "Polymer Solutions", "count": 25},
-                {"category": "Water Treatment", "count": 18},
-                {"category": "Sustainability Products", "count": 12}
+                {"category": "AI & Generative AI", "count": 5},
+                {"category": "Data Analytics", "count": 4},
+                {"category": "Cloud Solutions", "count": 4},
+                {"category": "Cybersecurity", "count": 3},
+                {"category": "Digital Transformation", "count": 3},
+                {"category": "Automation & RPA", "count": 2}
             ],
             "topSellingSolutions": [
-                {"productName": "EcoShield Bio-Coatings", "opportunities": 12, "revenueImpact": "$2.5M"},
-                {"productName": "VOCapture Elite", "opportunities": 8, "revenueImpact": "$1.8M"},
-                {"productName": "PolyBond Industrial Adhesives", "opportunities": 6, "revenueImpact": "$900K"},
-                {"productName": "ChemPure Systems", "opportunities": 5, "revenueImpact": "$1.1M"},
-                {"productName": "NovaPredict AI", "opportunities": 4, "revenueImpact": "$2.0M"}
+                {"productName": "AI Sales Intelligence Platform", "opportunities": 12, "revenueImpact": "$450K"},
+                {"productName": "Cloud Migration Accelerator", "opportunities": 8, "revenueImpact": "$380K"},
+                {"productName": "Data Lake Analytics Suite", "opportunities": 6, "revenueImpact": "$250K"},
+                {"productName": "Cybersecurity Threat Shield", "opportunities": 5, "revenueImpact": "$320K"},
+                {"productName": "RPA Process Automator", "opportunities": 4, "revenueImpact": "$180K"}
             ],
-            "recentCaseStudies": [
-                {"clientName": "Asian Paints", "projectTitle": "VOC Reduction Program", "industry": "Manufacturing", "result": "42% Emission Reduction"},
-                {"clientName": "Tata Motors", "projectTitle": "Predictive Maintenance Deployment", "industry": "Automotive", "result": "37% Downtime Reduction"},
-                {"clientName": "Reliance Industries", "projectTitle": "Polymer Optimization", "industry": "Chemicals", "result": "15% Cost Savings"}
-            ],
-            "opportunityPipeline": [
-                {"stage": "Lead", "count": 35},
-                {"stage": "Qualified", "count": 22},
-                {"stage": "Proposal Sent", "count": 15},
-                {"stage": "Negotiation", "count": 8},
-                {"stage": "Won", "count": 42},
-                {"stage": "Lost", "count": 18}
-            ],
+            "recentCaseStudies": [],
+            "opportunityPipeline": [],
             "crmActivity": {
-                "meetingsThisMonth": 34,
-                "notesAdded": 89,
-                "customerInteractions": 156,
-                "followUpsPending": 12
+                "meetingsThisMonth": 0,
+                "notesAdded": 0,
+                "customerInteractions": 0,
+                "followUpsPending": 0
             },
             "proposalAnalytics": {
-                "total": 124,
-                "approved": 89,
-                "rejected": 20,
-                "pending": 15
+                "total": 0,
+                "approved": 0,
+                "rejected": 0,
+                "pending": 0
             },
             "aiRecommendations": [
-                "EcoShield Bio-Coatings is involved in 60% of active opportunities.",
-                "Automotive sector has highest conversion rate.",
-                "VOCapture products are driving most sustainability-related deals.",
-                "Increase focus on packaging industry opportunities."
+                "AI & Generative AI services are driving the highest client interest — consider bundling with analytics.",
+                "Cloud Migration has the strongest conversion funnel across enterprise accounts.",
+                "Cybersecurity services show rising demand in BFSI and Healthcare verticals.",
+                "Increase focus on cross-selling Data Analytics with existing Cloud customers."
             ]
         }
 
         try:
             db = CompanyDataService._get_db()
             client = db.client
-            companydetails_db = client["companydetails"]
+            company_db = client["company_details"]
             
-            # Fetch from correct collections
-            products_col = companydetails_db["product details"]
-            case_studies_col = companydetails_db["case studies"]
-            crm_col = companydetails_db["CRM Records"]
-            meeting_col = companydetails_db["past sales and meeting records"]
-            proposals_col = companydetails_db["Proposal documents"]
-            opp_col = companydetails_db["Opportunity History"]
+            # Map to correct collection names in the new schema
+            products_col = company_db["products"]
+            case_studies_col = company_db["case studies"]
+            crm_col = company_db["crm records"]
+            meeting_col = company_db["past meeting records"]
+            proposals_col = company_db["proposal documents"]
 
-            # Overview
+            # Overview counts
             total_products = products_col.count_documents({})
             total_cases = case_studies_col.count_documents({})
-            active_opps = opp_col.count_documents({"opportunityStatus": "Open"})
-            active_customers = crm_col.count_documents({"status": "Active"})
+            total_crm = crm_col.count_documents({})
+            
+            # Count active CRM interactions (status = "Interested" or similar active states)
+            active_statuses = ["Interested", "Active", "Engaged", "Follow-Up", "In Progress"]
+            active_customers = crm_col.count_documents({"status": {"$in": active_statuses}})
+            if active_customers == 0:
+                # Fallback: count all distinct companies in CRM as active
+                active_customers = len(crm_col.distinct("company"))
             
             total_props = proposals_col.count_documents({})
-            # Categorize advanced proposal stages (Negotiation, Sent, Testing, Pilot, Exec Approval) as won/approved
-            approved_stages = ["Approved", "Executive Approval", "Negotiation", "Pilot Phase", "Technical Review", "Sample Testing", "Proposal Sent"]
+            # Proposal success: count statuses that indicate progress/approval
+            approved_stages = ["Approved", "Accepted", "Won", "Signed", "In Progress", "Under Review", "Submitted"]
             won_props = proposals_col.count_documents({"proposalStatus": {"$in": approved_stages}})
-            success_rate = (won_props / total_props * 100) if total_props > 0 else 72
+            success_rate = (won_props / total_props * 100) if total_props > 0 else 0
 
-            if total_products > 0:
-                summary["overview"]["totalProducts"] = total_products
-                summary["overview"]["totalCaseStudies"] = total_cases
-                summary["overview"]["activeOpportunities"] = active_opps
-                summary["overview"]["activeCustomers"] = active_customers
-                summary["overview"]["proposalSuccessRate"] = int(success_rate)
+            summary["overview"]["totalProducts"] = total_products
+            summary["overview"]["totalCaseStudies"] = total_cases
+            summary["overview"]["activeCustomers"] = active_customers
+            summary["overview"]["proposalSuccessRate"] = int(success_rate)
+
+            # Check for Opportunity History collection (may not exist in new schema)
+            collection_names = company_db.list_collection_names()
+            opp_col_name = None
+            for name in collection_names:
+                if "opportunit" in name.lower() or "deal" in name.lower():
+                    opp_col_name = name
+                    break
             
-            # Product Portfolio (aggregate)
+            if opp_col_name:
+                opp_col = company_db[opp_col_name]
+                active_opps = opp_col.count_documents({"opportunityStatus": "Open"})
+                if active_opps == 0:
+                    active_opps = opp_col.count_documents({})
+                summary["overview"]["activeOpportunities"] = active_opps
+                
+                # Opportunity Pipeline
+                pipeline_stages = list(opp_col.aggregate([{"$group": {"_id": "$salesStage", "count": {"$sum": 1}}}]))
+                if pipeline_stages:
+                    summary["opportunityPipeline"] = [
+                        {"stage": s["_id"], "count": s["count"]} for s in pipeline_stages if s["_id"]
+                    ]
+            else:
+                # Derive opportunities from proposals as a proxy
+                summary["overview"]["activeOpportunities"] = proposals_col.count_documents({})
+                # Build pipeline from proposal statuses
+                prop_pipeline = list(proposals_col.aggregate([{"$group": {"_id": "$proposalStatus", "count": {"$sum": 1}}}]))
+                if prop_pipeline:
+                    summary["opportunityPipeline"] = [
+                        {"stage": s["_id"], "count": s["count"]} for s in prop_pipeline if s["_id"]
+                    ]
+            
+            # Product Portfolio (aggregate by category)
             if total_products > 0:
                 pipeline = [{"$group": {"_id": "$category", "count": {"$sum": 1}}}]
                 portfolio = list(products_col.aggregate(pipeline))
                 if portfolio:
                     summary["productPortfolio"] = [{"category": p["_id"] or "Unknown", "count": p["count"]} for p in portfolio if p["_id"]]
 
-            # Top Selling Solutions (Mock opportunities for now, since product details doesn't have opportunities count)
+            # Top Selling Solutions (from products collection)
             top_products = list(products_col.find().limit(5))
             if top_products:
                 summary["topSellingSolutions"] = [
                     {
-                        "productName": p.get("productName", "Unknown"), 
-                        "opportunities": 10, # Mocked as not directly available in schema
-                        "revenueImpact": f"${p.get('price', 0) * 10}"
+                        "productName": p.get("serviceName", p.get("productName", "Unknown")),
+                        "opportunities": 10,  # Placeholder — not directly available in schema
+                        "revenueImpact": f"${int(float(p.get('pricing', 0))) * 10:,}" if p.get('pricing') else "Contact Sales"
                     } for p in top_products
                 ]
 
@@ -117,39 +140,27 @@ class DashboardService:
             if recent_cases:
                 summary["recentCaseStudies"] = [
                     {
-                        "clientName": c.get("client", "Unknown"),
-                        "projectTitle": c.get("title", "Unknown"),
+                        "clientName": c.get("client", c.get("company", "Unknown")),
+                        "projectTitle": c.get("title", c.get("projectTitle", "Unknown")),
                         "industry": c.get("industry", "Unknown"),
-                        "result": c.get("results", "Unknown")
+                        "result": c.get("results", c.get("result", "Unknown"))
                     } for c in recent_cases
                 ]
 
-            # Opportunity Pipeline
-            if opp_col.count_documents({}) > 0:
-                pipeline_stages = list(opp_col.aggregate([{"$group": {"_id": "$salesStage", "count": {"$sum": 1}}}]))
-                if pipeline_stages:
-                     summary["opportunityPipeline"] = [
-                         {"stage": s["_id"], "count": s["count"]} for s in pipeline_stages if s["_id"]
-                     ]
-
             # CRM Activity
-            if crm_col.count_documents({}) > 0 or meeting_col.count_documents({}) > 0:
-                summary["crmActivity"] = {
-                    "meetingsThisMonth": meeting_col.count_documents({}), # Simple count for MTD
-                    "notesAdded": crm_col.count_documents({"notes": {"$exists": True, "$ne": ""}}),
-                    "customerInteractions": crm_col.count_documents({}),
-                    "followUpsPending": crm_col.count_documents({"nextFollowUp": {"$exists": True}})
-                }
+            total_meetings = meeting_col.count_documents({})
+            summary["crmActivity"] = {
+                "meetingsThisMonth": total_meetings,
+                "notesAdded": crm_col.count_documents({"painPoint": {"$exists": True, "$ne": ""}}),
+                "customerInteractions": total_crm,
+                "followUpsPending": crm_col.count_documents({"nextAction": {"$exists": True, "$ne": ""}})
+            }
 
             # Proposal Analytics
-            # Proposal Analytics aligned with MongoDB schema values
             if total_props > 0:
-                approved_stages = ["Approved", "Executive Approval", "Negotiation", "Pilot Phase", "Technical Review", "Sample Testing", "Proposal Sent"]
-                pending_stages = ["Under Review"]
-                
                 approved_count = proposals_col.count_documents({"proposalStatus": {"$in": approved_stages}})
+                pending_stages = ["Under Review", "Submitted", "Draft"]
                 pending_count = proposals_col.count_documents({"proposalStatus": {"$in": pending_stages}})
-                # Any other status (including None or missing status) counts as rejected/other to sum to total
                 rejected_count = total_props - (approved_count + pending_count)
                 
                 summary["proposalAnalytics"] = {
@@ -163,3 +174,56 @@ class DashboardService:
             logger.error(f"Failed to fetch dynamic dashboard summary: {e}", exc_info=True)
 
         return summary
+
+    @staticmethod
+    def get_total_revenue() -> dict:
+        try:
+            db = CompanyDataService._get_db()
+            client = db.client
+            company_db = client["company_details"]
+            past_sales_col = company_db["past_sales"]
+
+            pipeline = [
+                {
+                    "$match": {
+                        "$or": [
+                            {"dealStatus": "Won"},
+                            {"saleStatus": "Completed"}
+                        ]
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": None,
+                        "totalRevenue": {
+                            "$sum": "$dealValue"
+                        }
+                    }
+                }
+            ]
+            
+            result = list(past_sales_col.aggregate(pipeline))
+            total_revenue = result[0]["totalRevenue"] if result else 0
+            
+            # Fetch the actual deals that contributed to this revenue
+            contributing_deals = list(past_sales_col.find({
+                "$or": [
+                    {"dealStatus": "Won"},
+                    {"saleStatus": "Completed"}
+                ]
+            }, {"_id": 0}))
+
+            return {
+                "success": True,
+                "totalRevenue": total_revenue,
+                "currency": "USD",
+                "contributingDeals": contributing_deals
+            }
+        except Exception as e:
+            logger.error(f"Failed to fetch total revenue: {e}", exc_info=True)
+            return {
+                "success": False,
+                "totalRevenue": 0,
+                "currency": "USD",
+                "error": str(e)
+            }

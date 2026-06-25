@@ -14,7 +14,7 @@ def check_db():
     client = db.client
     companydetails_db = client["companydetails"]
     
-    colls = ['case studies', 'CRM Records', 'Opportunity History', 'past sales and meeting records', 'Proposal documents', 'productinfo', 'product details']
+    colls = ['case studies', 'crm records', 'proposal documents', 'past meeting records', 'products']
     for c in colls:
         coll = companydetails_db[c]
         count = coll.count_documents({})

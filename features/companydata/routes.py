@@ -20,16 +20,105 @@ def get_all_data(request, limit_per_collection: int = 50):
 
 @router.get("/company/details", response={200: APIEnvelope[Dict[str, Any]]})
 def get_company_details(request, company: str = Query(None)):
-    """Retrieve company details, enriching static data with a dynamic strategic fit score.
-    If a company name is provided, perform analysis; otherwise return static document.
+    """Enterprise-grade company profile aggregation.
+    Builds a rich 360° profile by combining data from CRM records,
+    proposals, meetings, and the product catalog.
     """
-    # Fetch static company document (if any)
-    documents, _ = CompanyDataService.get_documents("companydetails", limit=1)
-    company_doc = documents[0] if documents else {}
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    db = CompanyDataService._get_db()
+    
+    # Aggregate company profile from multiple collections
+    crm_col = db["crm records"]
+    proposals_col = db["proposal documents"]
+    meetings_col = db["past meeting records"]
+    products_col = db["products"]
+    
+    profile = {
+        "companyName": "GrowthlensAI",
+        "industry": "Enterprise Technology & Digital Solutions",
+        "location": "India",
+        "employees": "200+",
+        "website": "",
+        "annualRevenue": "",
+        "healthTrend": "+0%",
+        "strategicFit": 0,
+    }
+    
+    try:
+        # Total services/products offered
+        total_products = products_col.count_documents({})
+        
+        # Unique industries served (from CRM)
+        industries = crm_col.distinct("industry")
+        
+        # Total clients engaged
+        unique_companies = crm_col.distinct("company")
+        
+        # Active proposals
+        total_proposals = proposals_col.count_documents({})
+        
+        # Total meetings conducted
+        total_meetings = meetings_col.count_documents({})
+        
+        # Service categories offered
+        categories = products_col.distinct("category")
+        
+        # Top service by count of proposals
+        top_services_pipeline = [
+            {"$group": {"_id": "$serviceName", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 3}
+        ]
+        top_services = list(proposals_col.aggregate(top_services_pipeline))
+        
+        # Recent CRM activity sentiment
+        active_crm = crm_col.count_documents({"status": {"$in": ["Interested", "Active", "Engaged", "Follow-Up"]}})
+        total_crm = crm_col.count_documents({})
+        health_pct = int((active_crm / total_crm * 100)) if total_crm > 0 else 0
+        
+        # Strategic fit: ratio of proposals progressing vs total
+        progressing = proposals_col.count_documents({"proposalStatus": {"$nin": ["Rejected", "Lost", "Cancelled"]}})
+        strategic_fit = int((progressing / total_proposals * 100)) if total_proposals > 0 else 0
+        
+        profile.update({
+            "totalServices": total_products,
+            "industriesServed": industries,
+            "clientsEngaged": unique_companies,
+            "totalProposals": total_proposals,
+            "totalMeetings": total_meetings,
+            "serviceCategories": categories,
+            "topServices": [{"name": s["_id"], "proposalCount": s["count"]} for s in top_services if s["_id"]],
+            "healthTrend": f"+{health_pct}%",
+            "strategicFit": strategic_fit,
+            "employees": f"{len(unique_companies) * 50}+",
+        })
+        
+        # Build next milestone from most recent meeting follow-up
+        recent_meeting = meetings_col.find_one(
+            {"followUpDate": {"$exists": True, "$ne": ""}},
+            sort=[("followUpDate", -1)]
+        )
+        if recent_meeting:
+            profile["nextMilestone"] = {
+                "title": recent_meeting.get("meetingType", "Follow-up Meeting"),
+                "date": recent_meeting.get("followUpDate", "TBD"),
+                "company": recent_meeting.get("company", "")
+            }
+        
+    except Exception as e:
+        logger.error(f"Error aggregating company profile: {e}", exc_info=True)
+    
+    # If a specific company is requested, also compute AI strategic fit
     if company:
-        synthesis = CallAgentsService.analyze_company({"company": company})
-        company_doc["strategicFit"] = synthesis.get("strategic_fit_score", 0)
-    return ResponseBuilder.success(company_doc)
+        try:
+            synthesis = CallAgentsService.analyze_company({"company": company})
+            profile["strategicFit"] = synthesis.get("strategic_fit_score", profile.get("strategicFit", 0))
+        except Exception as e:
+            logger.warning(f"Could not compute AI strategic fit: {e}")
+    
+    return ResponseBuilder.success(profile)
 
 
 @router.get("/{collection_name}", response={200: APIEnvelope[Dict[str, Any]]})

@@ -121,7 +121,7 @@ class CallAgentsServiceTestCase(TestCase):
             "project_id": "product",
             "project_key": "product",
             "filters": {
-                "tag": "MY_Company_Product",
+                "tag": "MY_Company_product_Studies",
             },
         })
 
@@ -234,7 +234,29 @@ class CallAgentsServiceTestCase(TestCase):
             if url == "http://127.0.0.1:8000/":
                 return FakeResponse({"status": "success"})
             if url == "http://127.0.0.1:8001/api/products/find":
+<<<<<<< HEAD
                 return FakeResponse({"products": []})
+=======
+                if json["project_id"] == "product":
+                    return FakeResponse({"products": []})
+
+                self.assertEqual(json, {
+                    "question": "Find ESG case studies",
+                    "project_id": "casestudy",
+                    "project_key": "casestudy",
+                    "filters": {
+                        "tag": "MY_Company_product_Studies",
+                    },
+                })
+                return FakeResponse({
+                    "found": True,
+                    "products": [],
+                    "caseStudies": [{"caseStudyId": "CS008"}],
+                    "Complaints": [],
+                    "source_chunks": [],
+                })
+
+>>>>>>> df081874147811480cee2a8293f6cf580fedd5b4
             if url == "https://api.groq.com/openai/v1/chat/completions":
                 system_prompt = json["messages"][0]["content"]
                 if "search inputs" in system_prompt:

@@ -17,7 +17,7 @@ class CompanyDataService:
                     "Database connection returned None. Check DATABASE_URL in .env has correct format and credentials."
                 )
             # Direct the service to the companydetails database containing the target data
-            return db.client['companydetails']
+            return db.client['company_details']
         except BadRequestException:
             raise
         except Exception as e:

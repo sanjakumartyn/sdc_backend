@@ -13,6 +13,16 @@ def get_dashboard_summary(request):
     """
     return DashboardService.get_summary()
 
+@router.get("/total-revenue")
+def get_total_revenue(request):
+    """
+    Retrieves the total revenue generated from past_sales.
+    """
+    result = DashboardService.get_total_revenue()
+    if result.get("success"):
+        return ResponseBuilder.success(result)
+    return ResponseBuilder.error(result.get("error", "Failed to retrieve revenue"))
+
 @router.post("/analyze-company")
 def analyze_company(request):
     """
